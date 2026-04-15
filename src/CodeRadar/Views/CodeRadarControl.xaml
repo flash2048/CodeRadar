@@ -1,0 +1,767 @@
+<UserControl x:Class="CodeRadar.Views.CodeRadarControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vs="clr-namespace:Microsoft.VisualStudio.Shell;assembly=Microsoft.VisualStudio.Shell.15.0"
+             xmlns:local="clr-namespace:CodeRadar.Views"
+             xmlns:vm="clr-namespace:CodeRadar.ViewModels"
+             mc:Ignorable="d"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             d:DesignHeight="600" d:DesignWidth="460"
+             Background="{DynamicResource {x:Static vs:VsBrushes.ToolWindowBackgroundKey}}"
+             Foreground="{DynamicResource {x:Static vs:VsBrushes.ToolWindowTextKey}}"
+             FontFamily="{DynamicResource {x:Static vs:VsFonts.EnvironmentFontFamilyKey}}"
+             FontSize="{DynamicResource {x:Static vs:VsFonts.EnvironmentFontSizeKey}}"
+             TextOptions.TextFormattingMode="Display"
+             TextOptions.TextRenderingMode="ClearType">
+
+    <UserControl.Resources>
+        <local:BoolToVisibilityConverter x:Key="BoolToVis" />
+
+        <!-- ============================================================
+             THEME PALETTE
+             Solid fallbacks chosen so the UI is readable in BOTH dark and
+             light VS themes. Anywhere the VS-themed brush would be too
+             low-contrast, we override with a value from this palette.
+             ============================================================ -->
+        <SolidColorBrush x:Key="CR.PrimaryText"   Color="#F1F1F1" />
+        <SolidColorBrush x:Key="CR.SecondaryText" Color="#B5B5B5" />
+        <SolidColorBrush x:Key="CR.MutedText"     Color="#7A7A7A" />
+        <SolidColorBrush x:Key="CR.HeaderBg"      Color="#2D2D30" />
+        <SolidColorBrush x:Key="CR.HeaderText"    Color="#E6E6E6" />
+        <SolidColorBrush x:Key="CR.RowAlt"        Color="#161616" />
+        <SolidColorBrush x:Key="CR.RowHover"      Color="#3F3F46" />
+        <SolidColorBrush x:Key="CR.RowSelected"   Color="#264F78" />
+        <SolidColorBrush x:Key="CR.RowSelectedText" Color="#FFFFFF" />
+        <SolidColorBrush x:Key="CR.Border"        Color="#3F3F46" />
+        <SolidColorBrush x:Key="CR.Accent"        Color="#FFC83D" />   <!-- gold: pin / change -->
+        <SolidColorBrush x:Key="CR.AccentSoft"    Color="#33FFC83D" />
+        <SolidColorBrush x:Key="CR.AccentVerySoft" Color="#15FFC83D" />
+        <SolidColorBrush x:Key="CR.Danger"        Color="#F48771" />   <!-- null / error -->
+        <SolidColorBrush x:Key="CR.DangerBg"      Color="#33C0392B" />
+        <SolidColorBrush x:Key="CR.DangerBorder"  Color="#C0392B" />
+        <SolidColorBrush x:Key="CR.TypeText"      Color="#7AC97A" />   <!-- type names -->
+        <SolidColorBrush x:Key="CR.NameText"      Color="#9CDCFE" />   <!-- identifiers -->
+        <SolidColorBrush x:Key="CR.NumberText"    Color="#B5CEA8" />
+        <SolidColorBrush x:Key="CR.OkGreen"       Color="#4EC9B0" />
+
+        <!-- ============================================================
+             BASE TYPE STYLES
+             ============================================================ -->
+        <Style TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource CR.PrimaryText}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <Style TargetType="TextBox">
+            <Setter Property="Background" Value="#1E1E1E" />
+            <Setter Property="Foreground" Value="{StaticResource CR.PrimaryText}" />
+            <Setter Property="BorderBrush" Value="{StaticResource CR.Border}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="4,2" />
+            <Setter Property="MinHeight" Value="22" />
+        </Style>
+
+        <Style TargetType="Button">
+            <Setter Property="Background" Value="#3F3F46" />
+            <Setter Property="Foreground" Value="{StaticResource CR.PrimaryText}" />
+            <Setter Property="BorderBrush" Value="{StaticResource CR.Border}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="10,3" />
+            <Setter Property="MinHeight" Value="22" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#505056" />
+                    <Setter Property="BorderBrush" Value="{StaticResource CR.Accent}" />
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Opacity" Value="0.5" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- TabItem: VS-style flat tabs with an accent underline on selection. -->
+        <Style TargetType="TabItem">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{StaticResource CR.SecondaryText}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="14,6" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                BorderBrush="Transparent" BorderThickness="0,0,0,2"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter x:Name="Content"
+                                              ContentSource="Header"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              TextElement.Foreground="{TemplateBinding Foreground}"
+                                              TextElement.FontWeight="SemiBold" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#252526" />
+                                <Setter Property="Foreground" Value="{StaticResource CR.PrimaryText}" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource CR.Accent}" />
+                                <Setter TargetName="Bd" Property="Background" Value="#1E1E1E" />
+                                <Setter Property="Foreground" Value="{StaticResource CR.PrimaryText}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Column headers - bold, padded, themed. The default GridView header is gray and
+             unreadable in dark theme. -->
+        <Style TargetType="GridViewColumnHeader">
+            <Setter Property="Background" Value="{StaticResource CR.HeaderBg}" />
+            <Setter Property="Foreground" Value="{StaticResource CR.HeaderText}" />
+            <Setter Property="BorderBrush" Value="{StaticResource CR.Border}" />
+            <Setter Property="BorderThickness" Value="0,0,1,1" />
+            <Setter Property="Padding" Value="8,5" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="MinHeight" Value="24" />
+        </Style>
+
+        <!-- ListView container - transparent so our row striping shows through. -->
+        <Style TargetType="ListView">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{StaticResource CR.Border}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="{StaticResource CR.PrimaryText}" />
+            <Setter Property="AlternationCount" Value="2" />
+        </Style>
+
+        <!-- TreeView container - same treatment as ListView. -->
+        <Style TargetType="TreeView">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{StaticResource CR.Border}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="{StaticResource CR.PrimaryText}" />
+            <Setter Property="Padding" Value="4" />
+        </Style>
+
+        <Style TargetType="TreeViewItem">
+            <Setter Property="Foreground" Value="{StaticResource CR.PrimaryText}" />
+            <Setter Property="Padding" Value="2" />
+        </Style>
+
+        <!-- ============================================================
+             WATCH TREE ITEM TEMPLATE
+             ============================================================ -->
+        <DataTemplate x:Key="WatchNodeTemplate" DataType="{x:Type vm:WatchItemViewModel}">
+            <StackPanel Orientation="Horizontal" Margin="0,2,0,2">
+                <!-- Sequence preview badge (∑) -->
+                <TextBlock FontWeight="Bold" Margin="0,0,4,0" VerticalAlignment="Center" Width="14">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Text" Value="" />
+                            <Setter Property="Foreground" Value="{StaticResource CR.Accent}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsSequencePreview}" Value="True">
+                                    <Setter Property="Text" Value="∑" />
+                                    <Setter Property="ToolTip" Value="Sequence preview (Take 50)" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+
+                <TextBlock Text="{Binding Name}" FontWeight="SemiBold"
+                           Foreground="{StaticResource CR.NameText}" />
+                <TextBlock Text=" = " Foreground="{StaticResource CR.MutedText}" />
+
+                <Border CornerRadius="2" Padding="2,0">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Background" Value="Transparent" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding HasChanged}" Value="True">
+                                    <Setter Property="Background" Value="{StaticResource CR.AccentSoft}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <TextBlock Text="{Binding Value}">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Foreground" Value="{StaticResource CR.PrimaryText}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsNull}" Value="True">
+                                        <Setter Property="Foreground" Value="{StaticResource CR.Danger}" />
+                                        <Setter Property="FontStyle" Value="Italic" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding IsValid}" Value="False">
+                                        <Setter Property="Foreground" Value="{StaticResource CR.MutedText}" />
+                                        <Setter Property="FontStyle" Value="Italic" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding HasChanged}" Value="True">
+                                        <Setter Property="FontWeight" Value="Bold" />
+                                        <Setter Property="Foreground" Value="{StaticResource CR.Accent}" />
+                                        <Setter Property="ToolTip">
+                                            <Setter.Value>
+                                                <StackPanel>
+                                                    <TextBlock FontWeight="Bold" Text="Value changed"
+                                                               Foreground="{StaticResource CR.Accent}" />
+                                                    <TextBlock>
+                                                        <Run Text="Previous: " FontStyle="Italic"
+                                                             Foreground="{StaticResource CR.MutedText}" />
+                                                        <Run Text="{Binding PreviousValue, Mode=OneWay}" />
+                                                    </TextBlock>
+                                                    <TextBlock>
+                                                        <Run Text="Current:  " FontStyle="Italic"
+                                                             Foreground="{StaticResource CR.MutedText}" />
+                                                        <Run Text="{Binding Value, Mode=OneWay}" />
+                                                    </TextBlock>
+                                                </StackPanel>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </Border>
+
+                <TextBlock Text=" : " Foreground="{StaticResource CR.MutedText}" Margin="6,0,0,0" />
+                <TextBlock Text="{Binding Type}" Foreground="{StaticResource CR.TypeText}" />
+            </StackPanel>
+        </DataTemplate>
+
+        <HierarchicalDataTemplate DataType="{x:Type vm:WatchItemViewModel}"
+                                  ItemsSource="{Binding Children}">
+            <ContentPresenter ContentTemplate="{StaticResource WatchNodeTemplate}" Content="{Binding}" />
+        </HierarchicalDataTemplate>
+
+        <!-- ============================================================
+             STACK / THREAD ROW STYLE
+             Custom template - the default ListViewItem template fights us
+             on selection and hover colors. This one keeps full control.
+             ============================================================ -->
+        <Style x:Key="StackListItemStyle" TargetType="ListViewItem">
+            <Setter Property="Foreground" Value="{StaticResource CR.PrimaryText}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="SnapsToDevicePixels" Value="True" />
+            <Setter Property="MinHeight" Value="24" />
+            <EventSetter Event="PreviewMouseRightButtonDown"
+                         Handler="ListViewItem_PreviewMouseRightButtonDown" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListViewItem">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                BorderThickness="0,0,0,1"
+                                BorderBrush="#22000000"
+                                Padding="{TemplateBinding Padding}"
+                                SnapsToDevicePixels="True">
+                            <GridViewRowPresenter Columns="{TemplateBinding GridView.ColumnCollection}"
+                                                  Content="{TemplateBinding Content}"
+                                                  TextElement.Foreground="{TemplateBinding Foreground}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <!-- Alternating row stripe -->
+                            <Trigger Property="ItemsControl.AlternationIndex" Value="1">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource CR.RowAlt}" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource CR.RowHover}" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource CR.RowSelected}" />
+                                <Setter Property="Foreground" Value="{StaticResource CR.RowSelectedText}" />
+                            </Trigger>
+                            <DataTrigger Binding="{Binding IsPinned}" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource CR.AccentVerySoft}" />
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource CR.Accent}" />
+                                <Setter TargetName="Bd" Property="BorderThickness" Value="3,0,0,1" />
+                                <Setter Property="FontWeight" Value="SemiBold" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding IsUserCode}" Value="False">
+                                <Setter Property="Foreground" Value="{StaticResource CR.MutedText}" />
+                                <Setter Property="FontStyle" Value="Italic" />
+                            </DataTrigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Pin button (☆ / ★). -->
+        <DataTemplate x:Key="PinCellTemplate" DataType="{x:Type vm:StackFrameViewModel}">
+            <Button Width="24" Height="22"
+                    Background="Transparent" BorderThickness="0"
+                    Padding="0"
+                    ToolTip="Pin/unpin this frame"
+                    Command="{Binding DataContext.TogglePinCommand,
+                              RelativeSource={RelativeSource AncestorType={x:Type UserControl}}}"
+                    CommandParameter="{Binding}">
+                <Button.Style>
+                    <Style TargetType="Button">
+                        <Setter Property="Background" Value="Transparent" />
+                        <Setter Property="BorderThickness" Value="0" />
+                        <Setter Property="Cursor" Value="Hand" />
+                        <Style.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#33FFFFFF" />
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+                <TextBlock FontSize="14" FontWeight="Bold"
+                           HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Text" Value="☆" />
+                            <Setter Property="Foreground" Value="{StaticResource CR.MutedText}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsPinned}" Value="True">
+                                    <Setter Property="Text" Value="★" />
+                                    <Setter Property="Foreground" Value="{StaticResource CR.Accent}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </Button>
+        </DataTemplate>
+
+        <!-- Cell text - small style override so cells inherit the row's selected foreground. -->
+        <Style x:Key="CellText" TargetType="TextBlock">
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Padding" Value="6,0" />
+        </Style>
+
+    </UserControl.Resources>
+
+    <Grid Margin="6">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />          <!-- status bar -->
+            <RowDefinition Height="Auto" />          <!-- exception panel -->
+            <RowDefinition Height="*" />             <!-- main tabbed content -->
+        </Grid.RowDefinitions>
+
+        <!-- ===================== STATUS BAR ===================== -->
+        <Border Grid.Row="0" Padding="8,5" BorderThickness="0,0,0,1"
+                Background="#252526"
+                BorderBrush="{StaticResource CR.Border}">
+            <DockPanel>
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
+                    <Ellipse Width="11" Height="11" Margin="0,0,8,0" StrokeThickness="0">
+                        <Ellipse.Style>
+                            <Style TargetType="Ellipse">
+                                <Setter Property="Fill" Value="{StaticResource CR.MutedText}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding State}" Value="Break">
+                                        <Setter Property="Fill" Value="{StaticResource CR.Accent}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding State}" Value="Running">
+                                        <Setter Property="Fill" Value="{StaticResource CR.OkGreen}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Ellipse.Style>
+                    </Ellipse>
+                    <TextBlock Text="Debugger" Foreground="{StaticResource CR.SecondaryText}" />
+                    <TextBlock Text="  " />
+                    <TextBlock Text="{Binding StateText}" FontWeight="Bold"
+                               Foreground="{StaticResource CR.PrimaryText}" />
+
+                    <!-- Magic-Glance-style break counter -->
+                    <Border Margin="14,0,0,0" Padding="6,1" CornerRadius="2"
+                            Background="#2A2A2D" BorderBrush="{StaticResource CR.Border}" BorderThickness="1"
+                            ToolTip="Total break events observed in this session">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Breaks " Foreground="{StaticResource CR.MutedText}" />
+                            <TextBlock Text="{Binding BreakCount}" FontWeight="Bold"
+                                       Foreground="{StaticResource CR.Accent}" />
+                            <TextBlock Text="  •  last " Foreground="{StaticResource CR.MutedText}" />
+                            <TextBlock Text="{Binding LastBreakAtDisplay}"
+                                       Foreground="{StaticResource CR.SecondaryText}" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+                <Button DockPanel.Dock="Right" Content="Refresh"
+                        Command="{Binding RefreshCommand}"
+                        IsEnabled="{Binding IsInBreakMode}"
+                        HorizontalAlignment="Right" />
+
+                <!-- Transient status toast. Stays for ~2s then clears. -->
+                <Border Margin="14,0,12,0" Padding="8,2" CornerRadius="2"
+                        Background="{StaticResource CR.AccentSoft}"
+                        BorderBrush="{StaticResource CR.Accent}" BorderThickness="1"
+                        HorizontalAlignment="Right"
+                        Visibility="{Binding HasStatusMessage, Converter={StaticResource BoolToVis}}">
+                    <TextBlock Text="{Binding StatusMessage}"
+                               FontWeight="SemiBold" Foreground="{StaticResource CR.Accent}" />
+                </Border>
+            </DockPanel>
+        </Border>
+
+        <!-- ===================== EXCEPTION INSIGHTS ===================== -->
+        <Border Grid.Row="1" Margin="0,8,0,0" Padding="10" CornerRadius="3"
+                Background="{StaticResource CR.DangerBg}"
+                BorderBrush="{StaticResource CR.DangerBorder}" BorderThickness="1"
+                Visibility="{Binding HasException, Converter={StaticResource BoolToVis}}">
+            <StackPanel>
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Content="✕" Width="22" Height="20"
+                            Background="Transparent" BorderThickness="0"
+                            Foreground="{StaticResource CR.Danger}"
+                            Command="{Binding ClearExceptionCommand}" ToolTip="Dismiss" />
+                    <TextBlock Text="{Binding LastException.ExceptionType}"
+                               FontWeight="Bold" FontSize="14"
+                               Foreground="{StaticResource CR.Danger}" />
+                </DockPanel>
+                <TextBlock Text="{Binding LastException.Message}" TextWrapping="Wrap"
+                           Margin="0,6,0,0" Foreground="{StaticResource CR.PrimaryText}" />
+                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                    <TextBlock Text="Handled: " Foreground="{StaticResource CR.MutedText}" />
+                    <TextBlock Text="{Binding LastException.IsHandled, Mode=OneWay}"
+                               Foreground="{StaticResource CR.SecondaryText}" />
+                    <TextBlock Text="    Code: " Foreground="{StaticResource CR.MutedText}" />
+                    <TextBlock Text="{Binding LastException.Code, Mode=OneWay}"
+                               Foreground="{StaticResource CR.SecondaryText}" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <TabControl Grid.Row="2" Margin="0,8,0,0"
+                    Background="Transparent" BorderThickness="0">
+
+            <!-- ============== WATCHES ============== -->
+            <TabItem Header="Watches">
+                <Grid Margin="0,8,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <!-- add expression -->
+                        <RowDefinition Height="Auto" />
+                        <!-- recent expressions -->
+                        <RowDefinition Height="Auto" />
+                        <!-- search -->
+                        <RowDefinition Height="*" />
+                        <!-- tree -->
+                    </Grid.RowDefinitions>
+
+                    <!-- Add expression -->
+                    <DockPanel Grid.Row="0" Margin="0,0,0,4">
+                        <Button DockPanel.Dock="Right" Content="Add"
+                     Command="{Binding AddWatchCommand}"
+                     Margin="6,0,0,0" />
+                        <TextBox Text="{Binding NewWatchText, UpdateSourceTrigger=PropertyChanged}"
+                      ToolTip="Enter a C#/VB/C++ expression to watch - Enter to add">
+                            <TextBox.InputBindings>
+                                <KeyBinding Key="Return" Command="{Binding AddWatchCommand}" />
+                            </TextBox.InputBindings>
+                        </TextBox>
+                    </DockPanel>
+
+                    <!-- Recent expressions (collapsed when none) -->
+                    <DockPanel Grid.Row="1" Margin="0,0,0,4"
+                    Visibility="{Binding HasRecentExpressions, Converter={StaticResource BoolToVis}}">
+                        <TextBlock DockPanel.Dock="Left" Text="Recent" VerticalAlignment="Center"
+                        Foreground="{StaticResource CR.SecondaryText}" Margin="0,0,8,0" />
+                        <ComboBox ItemsSource="{Binding RecentExpressions}"
+                       Background="#1E1E1E" Foreground="{StaticResource CR.PrimaryText}"
+                       BorderBrush="{StaticResource CR.Border}"
+                       SelectedItem="{Binding NewWatchText, Mode=OneWayToSource}"
+                       ToolTip="Pick a recently-used expression to populate the box above" />
+                    </DockPanel>
+
+                    <!-- Object Search -->
+                    <DockPanel Grid.Row="2" Margin="0,0,0,6">
+                        <TextBlock DockPanel.Dock="Left" Text="🔍" VerticalAlignment="Center"
+                        FontSize="13" Foreground="{StaticResource CR.SecondaryText}"
+                        Margin="0,0,6,0" />
+                        <Button DockPanel.Dock="Right" Content="✕" Width="22"
+                     Command="{Binding ClearWatchSearchCommand}" Margin="6,0,0,0"
+                     ToolTip="Clear search" />
+                        <TextBlock DockPanel.Dock="Right" VerticalAlignment="Center"
+                        Margin="6,0,0,0" Foreground="{StaticResource CR.Accent}"
+                        Visibility="{Binding HasWatchSearch, Converter={StaticResource BoolToVis}}">
+                 <Run Text="{Binding WatchSearchMatchCount, Mode=OneWay}" />
+                 <Run Text=" match(es)" />
+                        </TextBlock>
+                        <TextBox Text="{Binding WatchSearch, UpdateSourceTrigger=PropertyChanged}"
+                      ToolTip="Search inside watch names and values" />
+                    </DockPanel>
+
+                    <TreeView Grid.Row="3" ItemsSource="{Binding Watches}"
+                   Tag="{Binding}">
+                        <TreeView.ItemContainerStyle>
+                            <Style TargetType="TreeViewItem">
+                                <Setter Property="Foreground" Value="{StaticResource CR.PrimaryText}" />
+                                <Setter Property="Padding" Value="2" />
+                                <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+                                <EventSetter Event="PreviewMouseRightButtonDown"
+                                  Handler="TreeViewItem_PreviewMouseRightButtonDown" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsSearchMatch}" Value="True">
+                                        <Setter Property="Background" Value="{StaticResource CR.AccentSoft}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TreeView.ItemContainerStyle>
+                        <TreeView.ContextMenu>
+                            <ContextMenu>
+                                <!-- Direct clipboard actions - no dialogs. Status toast confirms. -->
+                                <MenuItem Header="Copy">
+                                    <MenuItem Header="Value"
+                                   InputGestureText="Ctrl+C"
+                                   Command="{Binding PlacementTarget.Tag.CopyValueCommand,
+                                             RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
+                                   CommandParameter="{Binding PlacementTarget.SelectedItem,
+                                                     RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}" />
+                                    <MenuItem Header="Expression path"
+                                   Command="{Binding PlacementTarget.Tag.CopyPathCommand,
+                                             RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
+                                   CommandParameter="{Binding PlacementTarget.SelectedItem,
+                                                     RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}" />
+                                    <Separator />
+                                    <MenuItem Header="As text (tree)"
+                                   Command="{Binding PlacementTarget.Tag.CopyAsTextCommand,
+                                             RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
+                                   CommandParameter="{Binding PlacementTarget.SelectedItem,
+                                                     RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}" />
+                                    <MenuItem Header="As JSON"
+                                   Command="{Binding PlacementTarget.Tag.CopyAsJsonCommand,
+                                             RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
+                                   CommandParameter="{Binding PlacementTarget.SelectedItem,
+                                                     RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}" />
+                                    <MenuItem Header="As C# initializer"
+                                   Command="{Binding PlacementTarget.Tag.CopyAsCSharpCommand,
+                                             RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
+                                   CommandParameter="{Binding PlacementTarget.SelectedItem,
+                                                     RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}" />
+                                </MenuItem>
+                                <MenuItem Header="Pin as watch"
+                               Command="{Binding PlacementTarget.Tag.PinAsWatchCommand,
+                                         RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
+                               CommandParameter="{Binding PlacementTarget.SelectedItem,
+                                                 RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}" />
+                                <Separator />
+                                <MenuItem Header="View / Export object…"
+                               Command="{Binding PlacementTarget.Tag.ExportWatchCommand,
+                                         RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
+                               CommandParameter="{Binding PlacementTarget.SelectedItem,
+                                                 RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}" />
+                                <MenuItem Header="Decompose LINQ chain…"
+                               Command="{Binding PlacementTarget.Tag.DecomposeLinqCommand,
+                                         RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
+                               CommandParameter="{Binding PlacementTarget.SelectedItem,
+                                                 RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}" />
+                                <MenuItem Header="Reveal as watches"
+                               Command="{Binding PlacementTarget.Tag.RevealAsWatchesCommand,
+                                         RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
+                               CommandParameter="{Binding PlacementTarget.SelectedItem,
+                                                 RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}" />
+                                <MenuItem Header="Toggle sequence preview (LINQ)"
+                               Command="{Binding PlacementTarget.Tag.TogglePreviewSequenceCommand,
+                                         RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
+                               CommandParameter="{Binding PlacementTarget.SelectedItem,
+                                                 RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}" />
+                                <Separator />
+                                <MenuItem Header="Show history…"
+                               Command="{Binding PlacementTarget.Tag.ShowHistoryCommand,
+                                         RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
+                               CommandParameter="{Binding PlacementTarget.SelectedItem,
+                                                 RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}" />
+                                <MenuItem Header="Take snapshot"
+                               Command="{Binding PlacementTarget.Tag.SnapshotWatchCommand,
+                                         RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
+                               CommandParameter="{Binding PlacementTarget.SelectedItem,
+                                                 RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}" />
+                                <MenuItem Header="Compare snapshots…"
+                               Command="{Binding PlacementTarget.Tag.CompareSnapshotsCommand,
+                                         RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
+                               CommandParameter="{Binding PlacementTarget.SelectedItem,
+                                                 RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}" />
+                                <MenuItem Header="Clear snapshots"
+                               Command="{Binding PlacementTarget.Tag.ClearSnapshotsCommand,
+                                         RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
+                               CommandParameter="{Binding PlacementTarget.SelectedItem,
+                                                 RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}" />
+                                <Separator />
+                                <MenuItem Header="Acknowledge change"
+                               Command="{Binding PlacementTarget.Tag.AckChangeCommand,
+                                         RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
+                               CommandParameter="{Binding PlacementTarget.SelectedItem,
+                                                 RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}" />
+                                <MenuItem Header="Remove"
+                               Command="{Binding PlacementTarget.Tag.RemoveWatchCommand,
+                                         RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
+                               CommandParameter="{Binding PlacementTarget.SelectedItem,
+                                                 RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}" />
+                            </ContextMenu>
+                        </TreeView.ContextMenu>
+                    </TreeView>
+                </Grid>
+            </TabItem>
+
+            <!-- ============== STACK ============== -->
+            <TabItem Header="Stack">
+                <Grid Margin="0,8,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <DockPanel Grid.Row="0" Margin="0,0,0,6">
+                        <TextBlock Text="Filter" VerticalAlignment="Center"
+                                   Foreground="{StaticResource CR.SecondaryText}"
+                                   Margin="0,0,8,0" />
+                        <TextBox Text="{Binding StackFilter, UpdateSourceTrigger=PropertyChanged}" />
+                    </DockPanel>
+
+                    <Border Grid.Row="1" Margin="0,0,0,6" Padding="6" BorderThickness="1"
+                            CornerRadius="2"
+                            BorderBrush="{StaticResource CR.Accent}"
+                            Background="{StaticResource CR.AccentVerySoft}"
+                            Visibility="{Binding HasPinnedFrames, Converter={StaticResource BoolToVis}}">
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Top"
+                                       Text="★ Pinned frames"
+                                       FontWeight="Bold"
+                                       Foreground="{StaticResource CR.Accent}"
+                                       Margin="2,0,0,4" />
+                            <ListView ItemsSource="{Binding PinnedFrames}"
+                                      MaxHeight="120"
+                                      ItemContainerStyle="{StaticResource StackListItemStyle}">
+                                <ListView.View>
+                                    <GridView>
+                                        <GridViewColumn Header="" Width="32"
+                                                        CellTemplate="{StaticResource PinCellTemplate}" />
+                                        <GridViewColumn Header="Function" Width="240">
+                                            <GridViewColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding FunctionName}"
+                                                               Style="{StaticResource CellText}" />
+                                                </DataTemplate>
+                                            </GridViewColumn.CellTemplate>
+                                        </GridViewColumn>
+                                        <GridViewColumn Header="Module" Width="160">
+                                            <GridViewColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding Module}"
+                                                               Style="{StaticResource CellText}"
+                                                               Foreground="{StaticResource CR.SecondaryText}" />
+                                                </DataTemplate>
+                                            </GridViewColumn.CellTemplate>
+                                        </GridViewColumn>
+                                    </GridView>
+                                </ListView.View>
+                            </ListView>
+                        </DockPanel>
+                    </Border>
+
+                    <ListView Grid.Row="2" ItemsSource="{Binding StackView}"
+                              ItemContainerStyle="{StaticResource StackListItemStyle}"
+                              Tag="{Binding}">
+                        <ListView.View>
+                            <GridView>
+                                <GridViewColumn Header="" Width="32"
+                                                CellTemplate="{StaticResource PinCellTemplate}" />
+                                <GridViewColumn Header="#" Width="40">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Index}"
+                                                       Style="{StaticResource CellText}"
+                                                       Foreground="{StaticResource CR.MutedText}"
+                                                       HorizontalAlignment="Right" />
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+                                <GridViewColumn Header="Function" Width="240">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding FunctionName}"
+                                                       Style="{StaticResource CellText}"
+                                                       FontWeight="SemiBold" />
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+                                <GridViewColumn Header="Module" Width="160">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Module}"
+                                                       Style="{StaticResource CellText}"
+                                                       Foreground="{StaticResource CR.SecondaryText}" />
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+                                <GridViewColumn Header="Lang" Width="60">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Language}"
+                                                       Style="{StaticResource CellText}"
+                                                       Foreground="{StaticResource CR.MutedText}" />
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+                            </GridView>
+                        </ListView.View>
+                        <ListView.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Pin / Unpin"
+                                          Command="{Binding PlacementTarget.Tag.TogglePinCommand,
+                                                    RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
+                                          CommandParameter="{Binding PlacementTarget.SelectedItem,
+                                                            RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}" />
+                            </ContextMenu>
+                        </ListView.ContextMenu>
+                    </ListView>
+                </Grid>
+            </TabItem>
+
+            <!-- ============== THREADS ============== -->
+            <TabItem Header="Threads">
+                <ListView ItemsSource="{Binding Threads}" Margin="0,8,0,0"
+                          ItemContainerStyle="{StaticResource StackListItemStyle}">
+                    <ListView.View>
+                        <GridView>
+                            <GridViewColumn Header="ID" Width="60">
+                                <GridViewColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Id}"
+                                                   Style="{StaticResource CellText}"
+                                                   Foreground="{StaticResource CR.MutedText}"
+                                                   HorizontalAlignment="Right" />
+                                    </DataTemplate>
+                                </GridViewColumn.CellTemplate>
+                            </GridViewColumn>
+                            <GridViewColumn Header="Name" Width="220">
+                                <GridViewColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding DisplayName}"
+                                                   Style="{StaticResource CellText}"
+                                                   FontWeight="SemiBold" />
+                                    </DataTemplate>
+                                </GridViewColumn.CellTemplate>
+                            </GridViewColumn>
+                            <GridViewColumn Header="Location" Width="260">
+                                <GridViewColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Location}"
+                                                   Style="{StaticResource CellText}"
+                                                   Foreground="{StaticResource CR.SecondaryText}" />
+                                    </DataTemplate>
+                                </GridViewColumn.CellTemplate>
+                            </GridViewColumn>
+                        </GridView>
+                    </ListView.View>
+                </ListView>
+            </TabItem>
+
+        </TabControl>
+    </Grid>
+</UserControl>

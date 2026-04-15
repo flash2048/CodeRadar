@@ -1,0 +1,120 @@
+using System;
+using System.Runtime.InteropServices;
+using System.Windows;
+using System.Windows.Interop;
+using CodeRadar.Services;
+using CodeRadar.ViewModels;
+using Microsoft.VisualStudio.Shell;
+using Microsoft.VisualStudio.Shell.Interop;
+
+namespace CodeRadar.Views
+{
+    [Guid(PackageGuids.ToolWindowGuidString)]
+    public sealed class CodeRadarToolWindow : ToolWindowPane
+    {
+        private CodeRadarViewModel _viewModel;
+
+        internal CodeRadarViewModel ViewModel => _viewModel;
+
+        public CodeRadarToolWindow() : base(null)
+        {
+            Caption = "Code Radar";
+        }
+
+        protected override void OnCreate()
+        {
+            base.OnCreate();
+
+            var package = (CodeRadarPackage)Package;
+            var debugger = package.GetCodeRadarService<IDebuggerService>();
+            var evaluator = package.GetCodeRadarService<IExpressionEvaluatorService>();
+
+            _viewModel = new CodeRadarViewModel(debugger, evaluator, package.JoinableTaskFactory);
+            _viewModel.ExportRequested    += OnExportRequested;
+            _viewModel.HistoryRequested   += OnHistoryRequested;
+            _viewModel.CompareRequested   += OnCompareRequested;
+            _viewModel.DecomposeRequested += OnDecomposeRequested;
+
+            var control = new CodeRadarControl { DataContext = _viewModel };
+            Content = control;
+        }
+
+        protected override void OnClose()
+        {
+            try
+            {
+                if (_viewModel != null)
+                {
+                    _viewModel.ExportRequested    -= OnExportRequested;
+                    _viewModel.HistoryRequested   -= OnHistoryRequested;
+                    _viewModel.CompareRequested   -= OnCompareRequested;
+                    _viewModel.DecomposeRequested -= OnDecomposeRequested;
+                    _viewModel.Dispose();
+                }
+            }
+            catch
+            {
+            }
+            _viewModel = null;
+            base.OnClose();
+        }
+
+        private void OnHistoryRequested(object sender, HistoryRequestedEventArgs e)
+            => ShowDialog(() => new WatchHistoryWindow(e.Watch));
+
+        private void OnCompareRequested(object sender, CompareRequestedEventArgs e)
+            => ShowDialog(() => new CompareSnapshotsWindow(e.Watch));
+
+        private void OnDecomposeRequested(object sender, DecomposeRequestedEventArgs e)
+            => ShowDialog(() => new LinqDecomposerWindow(e.OriginalExpression, e.Steps));
+
+        private void ShowDialog(Func<Window> factory)
+        {
+            try
+            {
+                var dlg = factory();
+                var owner = TryGetMainWindow();
+                if (owner != IntPtr.Zero)
+                {
+                    try { new WindowInteropHelper(dlg).Owner = owner; }
+                    catch { }
+                }
+                else
+                {
+                    dlg.WindowStartupLocation = WindowStartupLocation.CenterScreen;
+                }
+                dlg.Show();
+                dlg.Activate();
+                dlg.Topmost = true;
+                dlg.Topmost = false;
+            }
+            catch (Exception ex)
+            {
+                try
+                {
+                    MessageBox.Show("Code Radar dialog failed to open.\n\n" + ex,
+                        "Code Radar", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+                catch { }
+            }
+        }
+
+        private void OnExportRequested(object sender, ExportRequestedEventArgs e)
+            => ShowDialog(() => new ObjectViewerWindow(e.Node, e.Caption));
+
+        private static IntPtr TryGetMainWindow()
+        {
+            try
+            {
+                ThreadHelper.ThrowIfNotOnUIThread();
+                var uiShell = Microsoft.VisualStudio.Shell.Package.GetGlobalService(typeof(SVsUIShell)) as IVsUIShell;
+                if (uiShell != null && uiShell.GetDialogOwnerHwnd(out var hwnd) == 0)
+                    return hwnd;
+            }
+            catch
+            {
+            }
+            return IntPtr.Zero;
+        }
+    }
+}

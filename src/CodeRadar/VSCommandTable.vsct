@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CommandTable xmlns="http://schemas.microsoft.com/VisualStudio/2005-10-18/CommandTable" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <Extern href="stdidcmd.h" />
+  <Extern href="vsshlids.h" />
+
+  <Commands package="guidCodeRadarPackage">
+
+    <Groups>
+      <!-- Top-level: View → Other Windows → Code Radar -->
+      <Group guid="guidCodeRadarCommandSet" id="CodeRadarMenuGroup" priority="0x0600">
+        <Parent guid="guidSHLMainMenu" id="IDG_VS_WNDO_OTRWNDWS1" />
+      </Group>
+
+      <!-- Anchor group inside the editor code-window context menu. -->
+      <Group guid="guidCodeRadarCommandSet" id="CodeRadarEditorContextGroup" priority="0x0600">
+        <Parent guid="guidSHLMainMenu" id="IDM_VS_CTXT_CODEWIN" />
+      </Group>
+
+      <!-- Group inside our submenu. Submenus can only contain groups, which contain buttons. -->
+      <Group guid="guidCodeRadarCommandSet" id="CodeRadarSubMenuGroup" priority="0x0100">
+        <Parent guid="guidCodeRadarCommandSet" id="CodeRadarSubMenu" />
+      </Group>
+    </Groups>
+
+    <Menus>
+      <!-- Code Radar submenu, shown as a top-level item in the editor right-click menu. -->
+      <Menu guid="guidCodeRadarCommandSet" id="CodeRadarSubMenu" priority="0x0700" type="Menu">
+        <Parent guid="guidCodeRadarCommandSet" id="CodeRadarEditorContextGroup" />
+        <Icon guid="guidCodeRadarBitmaps" id="bmpShowWindow" />
+        <Strings>
+          <ButtonText>Code Radar</ButtonText>
+          <CommandName>Code Radar</CommandName>
+        </Strings>
+      </Menu>
+    </Menus>
+
+    <Buttons>
+      <!-- View → Other Windows → Code Radar -->
+      <Button guid="guidCodeRadarCommandSet" id="ShowCodeRadarWindowCommandId" priority="0x0100" type="Button">
+        <Parent guid="guidCodeRadarCommandSet" id="CodeRadarMenuGroup" />
+        <Icon guid="guidCodeRadarBitmaps" id="bmpShowWindow" />
+        <Strings>
+          <ButtonText>Code Radar</ButtonText>
+          <MenuText>Code &amp;Radar</MenuText>
+          <ToolTipText>Open the Code Radar tool window.</ToolTipText>
+          <CanonicalName>.CodeRadar.ShowWindow</CanonicalName>
+          <LocCanonicalName>.CodeRadar.ShowWindow</LocCanonicalName>
+          <CommandName>CodeRadar.ShowWindow</CommandName>
+        </Strings>
+      </Button>
+
+      <!-- Editor context menu: Add to watches (Shift+Alt+A) -->
+      <Button guid="guidCodeRadarCommandSet" id="EditorAddToWatchesCommandId" priority="0x0100" type="Button">
+        <Parent guid="guidCodeRadarCommandSet" id="CodeRadarSubMenuGroup" />
+        <Icon guid="guidCodeRadarBitmaps" id="bmpAddWatch" />
+        <CommandFlag>DefaultInvisible</CommandFlag>
+        <CommandFlag>DynamicVisibility</CommandFlag>
+        <Strings>
+          <ButtonText>Add to watches</ButtonText>
+          <MenuText>&amp;Add to watches</MenuText>
+          <CanonicalName>.CodeRadar.Editor.AddToWatches</CanonicalName>
+          <CommandName>CodeRadar.Editor.AddToWatches</CommandName>
+        </Strings>
+      </Button>
+
+      <!-- Editor context menu: View / Export object… (Shift+Alt+W) -->
+      <Button guid="guidCodeRadarCommandSet" id="EditorExportObjectCommandId" priority="0x0200" type="Button">
+        <Parent guid="guidCodeRadarCommandSet" id="CodeRadarSubMenuGroup" />
+        <Icon guid="guidCodeRadarBitmaps" id="bmpExport" />
+        <CommandFlag>DefaultInvisible</CommandFlag>
+        <CommandFlag>DynamicVisibility</CommandFlag>
+        <Strings>
+          <ButtonText>View / Export object…</ButtonText>
+          <MenuText>&amp;View / Export object…</MenuText>
+          <CanonicalName>.CodeRadar.Editor.ExportObject</CanonicalName>
+          <CommandName>CodeRadar.Editor.ExportObject</CommandName>
+        </Strings>
+      </Button>
+
+      <!-- Editor context menu: Decompose LINQ chain (Shift+Alt+L) -->
+      <Button guid="guidCodeRadarCommandSet" id="EditorDecomposeLinqCommandId" priority="0x0300" type="Button">
+        <Parent guid="guidCodeRadarCommandSet" id="CodeRadarSubMenuGroup" />
+        <Icon guid="guidCodeRadarBitmaps" id="bmpLinq" />
+        <CommandFlag>DefaultInvisible</CommandFlag>
+        <CommandFlag>DynamicVisibility</CommandFlag>
+        <Strings>
+          <ButtonText>Decompose LINQ chain…</ButtonText>
+          <MenuText>&amp;Decompose LINQ chain…</MenuText>
+          <CanonicalName>.CodeRadar.Editor.DecomposeLinq</CanonicalName>
+          <CommandName>CodeRadar.Editor.DecomposeLinq</CommandName>
+        </Strings>
+      </Button>
+
+      <!-- Editor context menu: Show image (Shift+Alt+I) -->
+      <Button guid="guidCodeRadarCommandSet" id="EditorShowImageCommandId" priority="0x0350" type="Button">
+        <Parent guid="guidCodeRadarCommandSet" id="CodeRadarSubMenuGroup" />
+        <Icon guid="guidCodeRadarBitmaps" id="bmpImage" />
+        <CommandFlag>DefaultInvisible</CommandFlag>
+        <CommandFlag>DynamicVisibility</CommandFlag>
+        <Strings>
+          <ButtonText>Show image…</ButtonText>
+          <MenuText>Show &amp;image…</MenuText>
+          <CanonicalName>.CodeRadar.Editor.ShowImage</CanonicalName>
+          <CommandName>CodeRadar.Editor.ShowImage</CommandName>
+        </Strings>
+      </Button>
+
+      <!-- Editor context menu: Show Code Radar window (Shift+Alt+R) -->
+      <Button guid="guidCodeRadarCommandSet" id="EditorShowWindowCommandId" priority="0x0400" type="Button">
+        <Parent guid="guidCodeRadarCommandSet" id="CodeRadarSubMenuGroup" />
+        <Icon guid="guidCodeRadarBitmaps" id="bmpShowWindow" />
+        <Strings>
+          <ButtonText>Show Code Radar window</ButtonText>
+          <MenuText>&amp;Show Code Radar window</MenuText>
+          <CanonicalName>.CodeRadar.Editor.ShowWindow</CanonicalName>
+          <CommandName>CodeRadar.Editor.ShowWindow</CommandName>
+        </Strings>
+      </Button>
+    </Buttons>
+
+    <!-- Icon strip. Each slot corresponds to an IDSymbol under guidCodeRadarBitmaps. -->
+    <Bitmaps>
+      <Bitmap guid="guidCodeRadarBitmaps" href="Resources\CommandIcons.png"
+              usedList="bmpShowWindow,bmpAddWatch,bmpExport,bmpLinq,bmpImage" />
+    </Bitmaps>
+  </Commands>
+
+  <!-- ===========================================================
+       Keyboard shortcuts. Scoped to the text editor so they don't
+       fight with Solution Explorer / design-surface defaults.
+       =========================================================== -->
+  <KeyBindings>
+    <KeyBinding guid="guidCodeRadarCommandSet" id="EditorAddToWatchesCommandId"
+                editor="GUID_TextEditorFactory" key1="A" mod1="Alt Shift" />
+    <KeyBinding guid="guidCodeRadarCommandSet" id="EditorExportObjectCommandId"
+                editor="GUID_TextEditorFactory" key1="W" mod1="Alt Shift" />
+    <KeyBinding guid="guidCodeRadarCommandSet" id="EditorDecomposeLinqCommandId"
+                editor="GUID_TextEditorFactory" key1="L" mod1="Alt Shift" />
+    <KeyBinding guid="guidCodeRadarCommandSet" id="EditorShowImageCommandId"
+                editor="GUID_TextEditorFactory" key1="I" mod1="Alt Shift" />
+    <KeyBinding guid="guidCodeRadarCommandSet" id="EditorShowWindowCommandId"
+                editor="guidVSStd97"           key1="R" mod1="Alt Shift" />
+  </KeyBindings>
+
+  <Symbols>
+    <GuidSymbol name="guidCodeRadarPackage" value="{3a2f9d50-1c4b-4b3a-9b0e-5b9f6e0c8a11}" />
+
+    <GuidSymbol name="guidCodeRadarCommandSet" value="{8f7c7a2c-4a3e-4d1f-9d85-2c7b7b0a1a22}">
+      <!-- Groups / menus -->
+      <IDSymbol name="CodeRadarMenuGroup"              value="0x1020" />
+      <IDSymbol name="CodeRadarEditorContextGroup"     value="0x1021" />
+      <IDSymbol name="CodeRadarSubMenu"                value="0x1030" />
+      <IDSymbol name="CodeRadarSubMenuGroup"           value="0x1040" />
+
+      <!-- Commands -->
+      <IDSymbol name="ShowCodeRadarWindowCommandId"    value="0x0100" />
+      <IDSymbol name="EditorAddToWatchesCommandId"     value="0x0200" />
+      <IDSymbol name="EditorExportObjectCommandId"     value="0x0201" />
+      <IDSymbol name="EditorDecomposeLinqCommandId"    value="0x0202" />
+      <IDSymbol name="EditorShowWindowCommandId"       value="0x0203" />
+      <IDSymbol name="EditorShowImageCommandId"        value="0x0204" />
+    </GuidSymbol>
+
+    <!-- Bitmap strip slots (1-indexed, left-to-right in CommandIcons.png). -->
+    <GuidSymbol name="guidCodeRadarBitmaps" value="{5a9e4d6a-1a5b-4f40-b2a1-0b3f2d47e811}">
+      <IDSymbol name="bmpShowWindow" value="1" />
+      <IDSymbol name="bmpAddWatch"   value="2" />
+      <IDSymbol name="bmpExport"     value="3" />
+      <IDSymbol name="bmpLinq"       value="4" />
+      <IDSymbol name="bmpImage"      value="5" />
+    </GuidSymbol>
+
+    <!-- Scope GUID for editor-only key bindings -->
+    <GuidSymbol name="GUID_TextEditorFactory" value="{8B382828-6202-11D1-8870-0000F87579D2}" />
+  </Symbols>
+</CommandTable>

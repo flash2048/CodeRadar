@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
+    <Metadata>
+        <Identity Id="CodeRadar.3a2f9d50-1c4b-4b3a-9b0e-5b9f6e0c8a11" Version="0.9.0" Language="en-US" Publisher="Code Radar" />
+        <DisplayName>Code Radar</DisplayName>
+        <Description xml:space="preserve">A modern debugging companion for Visual Studio 2022+. Dockable tool window with LINQ chain decomposition, object search, snapshot &amp; compare, per-watch time-travel history, deep object export (JSON / C# / text), reveal-as-watches, clipboard-first context actions, pinned stack frames, and real-time exception insights.</Description>
+        <MoreInfo>https://github.com/flash2048/CodeRadar</MoreInfo>
+        <Icon>assets\icon.png</Icon>
+        <PreviewImage>assets\preview.png</PreviewImage>
+        <Tags>debugger, debug, watch, stack trace, exception, diagnostics, ozcode, linq, inspector, productivity</Tags>
+    </Metadata>
+    <Installation>
+        <InstallationTarget Id="Microsoft.VisualStudio.Community" Version="[17.0,19.0)">
+            <ProductArchitecture>amd64</ProductArchitecture>
+        </InstallationTarget>
+        <InstallationTarget Id="Microsoft.VisualStudio.Pro" Version="[17.0,19.0)">
+            <ProductArchitecture>amd64</ProductArchitecture>
+        </InstallationTarget>
+        <InstallationTarget Id="Microsoft.VisualStudio.Enterprise" Version="[17.0,19.0)">
+            <ProductArchitecture>amd64</ProductArchitecture>
+        </InstallationTarget>
+    </Installation>
+    <Dependencies>
+        <Dependency Id="Microsoft.Framework.NDP" DisplayName="Microsoft .NET Framework" d:Source="Manual" Version="[4.8,)" />
+    </Dependencies>
+    <Prerequisites>
+        <Prerequisite Id="Microsoft.VisualStudio.Component.CoreEditor" Version="[17.0,19.0)" DisplayName="Visual Studio core editor" />
+    </Prerequisites>
+    <Assets>
+        <Asset Type="Microsoft.VisualStudio.VsPackage" d:Source="Project" d:ProjectName="%CurrentProject%" Path="|%CurrentProject%;PkgdefProjectOutputGroup|" />
+        <Asset Type="Microsoft.VisualStudio.MefComponent" d:Source="Project" d:ProjectName="%CurrentProject%" Path="|%CurrentProject%|" />
+    </Assets>
+</PackageManifest>

@@ -1,0 +1,300 @@
+<Window x:Class="CodeRadar.Views.ObjectViewerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vs="clr-namespace:Microsoft.VisualStudio.Shell;assembly=Microsoft.VisualStudio.Shell.15.0"
+        Title="Object Viewer"
+        Width="920" Height="640"
+        MinWidth="720" MinHeight="420"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Background="#1E1E1E"
+        Foreground="#F1F1F1"
+        TextOptions.TextFormattingMode="Display"
+        TextOptions.TextRenderingMode="ClearType"
+        FontFamily="{DynamicResource {x:Static vs:VsFonts.EnvironmentFontFamilyKey}}"
+        FontSize="{DynamicResource {x:Static vs:VsFonts.EnvironmentFontSizeKey}}">
+
+    <Window.Resources>
+        <!-- Palette -->
+        <SolidColorBrush x:Key="Fg"       Color="#F1F1F1" />
+        <SolidColorBrush x:Key="FgMuted"  Color="#B5B5B5" />
+        <SolidColorBrush x:Key="Bg"       Color="#1E1E1E" />
+        <SolidColorBrush x:Key="BgPanel"  Color="#252526" />
+        <SolidColorBrush x:Key="BgHover"  Color="#3F3F46" />
+        <SolidColorBrush x:Key="Border"   Color="#3F3F46" />
+        <SolidColorBrush x:Key="Accent"   Color="#FFC83D" />
+        <SolidColorBrush x:Key="Selected" Color="#264F78" />
+
+        <Style TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Fg}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <!-- ============================================================
+             CheckBox - explicit template so the label is always readable.
+             ============================================================ -->
+        <Style TargetType="CheckBox">
+            <Setter Property="Foreground" Value="{StaticResource Fg}" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0,0,18,4" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <StackPanel Orientation="Horizontal" Background="Transparent">
+                            <Border x:Name="Box" Width="15" Height="15"
+                                    BorderBrush="{StaticResource Border}" BorderThickness="1"
+                                    Background="{StaticResource Bg}"
+                                    VerticalAlignment="Center">
+                                <Path x:Name="Check"
+                                      Data="M 2,6 L 6,10 L 12,3"
+                                      Stroke="{StaticResource Accent}" StrokeThickness="2"
+                                      Visibility="Collapsed"
+                                      SnapsToDevicePixels="True" />
+                            </Border>
+                            <ContentPresenter Margin="6,0,0,0" VerticalAlignment="Center"
+                                              TextElement.Foreground="{TemplateBinding Foreground}" />
+                        </StackPanel>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Check" Property="Visibility" Value="Visible" />
+                                <Setter TargetName="Box"   Property="BorderBrush" Value="{StaticResource Accent}" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource Accent}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ============================================================
+             ComboBox - full dark template. Default WPF template uses
+             SystemColors that render as light-on-light in VS dark mode.
+             ============================================================ -->
+        <Style TargetType="ComboBoxItem">
+            <Setter Property="Foreground" Value="{StaticResource Fg}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Padding" Value="10,4" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBoxItem">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                Padding="{TemplateBinding Padding}"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter TextElement.Foreground="{TemplateBinding Foreground}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource Selected}" />
+                                <Setter Property="Foreground" Value="#FFFFFF" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource BgHover}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="ComboBox">
+            <Setter Property="Foreground" Value="{StaticResource Fg}" />
+            <Setter Property="Background" Value="{StaticResource BgPanel}" />
+            <Setter Property="BorderBrush" Value="{StaticResource Border}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="8,3" />
+            <Setter Property="MinHeight" Value="26" />
+            <Setter Property="SnapsToDevicePixels" Value="True" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <ToggleButton x:Name="ToggleButton" Focusable="False" ClickMode="Press"
+                                          IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
+                                          Background="{TemplateBinding Background}"
+                                          BorderBrush="{TemplateBinding BorderBrush}"
+                                          BorderThickness="{TemplateBinding BorderThickness}">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <Border x:Name="B"
+                                                Background="{TemplateBinding Background}"
+                                                BorderBrush="{TemplateBinding BorderBrush}"
+                                                BorderThickness="{TemplateBinding BorderThickness}"
+                                                SnapsToDevicePixels="True">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="22" />
+                                                </Grid.ColumnDefinitions>
+                                                <Path Grid.Column="1"
+                                                      HorizontalAlignment="Center"
+                                                      VerticalAlignment="Center"
+                                                      Data="M 0 0 L 4 4 L 8 0 Z"
+                                                      Fill="{StaticResource Fg}" />
+                                            </Grid>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="B" Property="BorderBrush"
+                                                        Value="{StaticResource Accent}" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                            </ToggleButton>
+                            <ContentPresenter x:Name="ContentSite"
+                                              IsHitTestVisible="False"
+                                              Content="{TemplateBinding SelectionBoxItem}"
+                                              ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                              ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}"
+                                              Margin="{TemplateBinding Padding}"
+                                              VerticalAlignment="Center"
+                                              HorizontalAlignment="Left"
+                                              TextElement.Foreground="{TemplateBinding Foreground}" />
+                            <Popup x:Name="Popup" Placement="Bottom"
+                                   IsOpen="{TemplateBinding IsDropDownOpen}"
+                                   Focusable="False" PopupAnimation="Slide" AllowsTransparency="True">
+                                <Border Background="{StaticResource BgPanel}"
+                                        BorderBrush="{StaticResource Border}" BorderThickness="1"
+                                        MinWidth="{TemplateBinding ActualWidth}"
+                                        MaxHeight="{TemplateBinding MaxDropDownHeight}"
+                                        SnapsToDevicePixels="True">
+                                    <ScrollViewer>
+                                        <StackPanel IsItemsHost="True"
+                                                    KeyboardNavigation.DirectionalNavigation="Contained" />
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ============================================================
+             Button
+             ============================================================ -->
+        <Style TargetType="Button">
+            <Setter Property="Background" Value="{StaticResource BgHover}" />
+            <Setter Property="Foreground" Value="{StaticResource Fg}" />
+            <Setter Property="BorderBrush" Value="{StaticResource Border}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="14,4" />
+            <Setter Property="MinHeight" Value="26" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                Padding="{TemplateBinding Padding}"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              TextElement.Foreground="{TemplateBinding Foreground}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#505056" />
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Accent}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#2A2A2D" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+    </Window.Resources>
+
+    <DockPanel Margin="12">
+
+        <!-- Top toolbar -->
+        <Border DockPanel.Dock="Top" Padding="0,0,0,10" BorderThickness="0,0,0,1"
+                BorderBrush="{StaticResource Border}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0" Text="Format" Foreground="{StaticResource FgMuted}"
+                           Margin="0,0,8,0" />
+                <ComboBox Grid.Column="1" Name="FormatCombo" Width="110"
+                          SelectionChanged="OptionsChanged">
+                    <ComboBoxItem Content="Text" IsSelected="True" />
+                    <ComboBoxItem Content="JSON" />
+                    <ComboBoxItem Content="C#" />
+                </ComboBox>
+
+                <TextBlock Grid.Column="2" Text="Depth" Foreground="{StaticResource FgMuted}"
+                           Margin="20,0,8,0" />
+                <ComboBox Grid.Column="3" Name="DepthCombo" Width="110"
+                          SelectionChanged="OptionsChanged">
+                    <ComboBoxItem Content="1" />
+                    <ComboBoxItem Content="2" />
+                    <ComboBoxItem Content="3" IsSelected="True" />
+                    <ComboBoxItem Content="5" />
+                    <ComboBoxItem Content="10" />
+                    <ComboBoxItem Content="Unlimited" />
+                </ComboBox>
+
+                <TextBlock Grid.Column="4" Name="StatusText"
+                           Margin="20,0,0,0" VerticalAlignment="Center"
+                           Foreground="{StaticResource Accent}" FontStyle="Italic" />
+
+                <Button Grid.Column="5" Name="CopyButton" Content="Copy"
+                        Click="CopyButton_Click" Margin="8,0,0,0" />
+                <Button Grid.Column="6" Name="SaveButton" Content="Save As…"
+                        Click="SaveButton_Click" Margin="8,0,0,0" />
+            </Grid>
+        </Border>
+
+        <!-- Options row -->
+        <Border DockPanel.Dock="Top" Padding="0,10,0,10" BorderThickness="0,0,0,1"
+                BorderBrush="{StaticResource Border}">
+            <WrapPanel>
+                <CheckBox Name="FullTypeCheck"       Content="Use type full name"
+                          Checked="OptionsChanged"   Unchecked="OptionsChanged"
+                          ToolTip="Emit System.Collections.Generic.List&lt;int&gt; instead of List&lt;int&gt;" />
+                <CheckBox Name="IgnoreIndexesCheck"  Content="Ignore indexes"
+                          Checked="OptionsChanged"   Unchecked="OptionsChanged"
+                          ToolTip="Suppress [0], [1] labels in sequence output" />
+                <CheckBox Name="IgnoreDefaultsCheck" Content="Ignore default values" IsChecked="True"
+                          Checked="OptionsChanged"   Unchecked="OptionsChanged"
+                          ToolTip="Skip children whose value is null, 0, false, or an empty string" />
+                <CheckBox Name="PropertiesOnlyCheck" Content="Set property only"
+                          Checked="OptionsChanged"   Unchecked="OptionsChanged"
+                          ToolTip="Emit only named properties - skip indexer rows and debugger pseudo-rows" />
+                <CheckBox Name="TrimRootNameCheck"   Content="Trim initial variable name"
+                          Checked="OptionsChanged"   Unchecked="OptionsChanged"
+                          ToolTip="Omit the outer 'var name = ...' / root name prefix" />
+            </WrapPanel>
+        </Border>
+
+        <!-- Output -->
+        <TextBox Name="OutputBox"
+                 Margin="0,10,0,0"
+                 IsReadOnly="True"
+                 Background="{StaticResource Bg}"
+                 Foreground="{StaticResource Fg}"
+                 BorderBrush="{StaticResource Border}"
+                 BorderThickness="1"
+                 FontFamily="Consolas"
+                 FontSize="13"
+                 AcceptsReturn="True"
+                 VerticalScrollBarVisibility="Auto"
+                 HorizontalScrollBarVisibility="Auto"
+                 TextWrapping="NoWrap"
+                 Padding="8" />
+    </DockPanel>
+</Window>
