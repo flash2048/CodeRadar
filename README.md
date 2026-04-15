@@ -2,12 +2,12 @@
 
 **A debugging companion for Visual Studio 2022+.**
 
-![Code Radar hero](src/CodeRadar/assets/hero.png)
+![Code Radar hero](https://github.com/flash2048/CodeRadar/raw/main/src/CodeRadar/assets/hero.png)
 Code Radar is a Visual Studio extension (VSIX) that gives you a single dockable tool window for inspecting your code while debugging - with features you normally wouldn't get from the stock Locals and Watch panels. It captures the live debugger state, lets you export and compare complex objects, step through LINQ chains stage by stage, preview images hiding inside `byte[]` or streams, and time-travel through how a value changed across breakpoints.
 
 If you've ever wanted to dump a deep object graph to JSON on the fly, compare an object before and after a step, or see what your `customer.Orders.Where(...).Select(...)` chain actually looked like at each stage, this is the tool for you.
 
-![Code Radar window](imgs/code_radar_window.png)
+![Code Radar window](https://github.com/flash2048/CodeRadar/raw/main/imgs/code_radar_window.png)
 
 ---
 
@@ -25,11 +25,11 @@ Take a deep snapshot of an object before a suspicious line runs, another one aft
 **Object viewer with export.**
 Right-click any watched object and get a full viewer that can render the object as a readable text tree, as JSON, or as a C# object initializer you can paste straight into a unit test. Depth cap, type-full-name toggle, skip-default-values, properties-only, and more - all applied live.
 
-![Object Viewer](imgs/object_Viewer.png)
+![Object Viewer](https://github.com/flash2048/CodeRadar/raw/main/imgs/object_Viewer.png)
 
 **LINQ chain decomposer.**
 Right-click an expression like `orders.Where(o => o.IsActive).Select(o => o.Total).Take(5)` and Code Radar breaks it into stages, evaluating each one separately. You see the count drop or grow at every step (`100 -> 33`) and get sample elements to verify each transformation.
-![Linq Chain Decomposer](imgs/linq_chain_decomposer.png)
+![Linq Chain Decomposer](https://github.com/flash2048/CodeRadar/raw/main/imgs/linq_chain_decomposer.png)
 
 **Reveal as watches.**
 Turn any object into a flat list of watches for every top-level property. Useful when you want to pin individual fields for history tracking.
@@ -37,7 +37,7 @@ Turn any object into a flat list of watches for every top-level property. Useful
 **Image viewer.**
 Got a `byte[]`, `MemoryStream`, or even a Base64 string that happens to be an image? Code Radar decodes it (PNG, JPEG, GIF, BMP, WEBP, TIFF, ICO) and renders it in a real window so you can verify visually rather than squinting at byte counts.
 
-![Image Viewer](imgs/Image_Viewer.png)
+![Image Viewer](https://github.com/flash2048/CodeRadar/raw/main/imgs/Image_Viewer.png)
 
 **Clipboard-first right-click menu.**
 Every row in the watch tree has copy actions: copy the value, copy the full expression path (e.g. `customer.Orders[0].Items[3].Name`), copy the object as text/JSON/C# - all without opening a dialog. A status toast confirms the action.
@@ -45,7 +45,7 @@ Every row in the watch tree has copy actions: copy the value, copy the full expr
 **Editor context menu integration.**
 Right-click any identifier in the code editor and you get the same actions: add to watches, open object viewer, decompose LINQ, show image - without ever leaving your code.
 
-![Editor context menu](imgs/menu.png)
+![Editor context menu](https://github.com/flash2048/CodeRadar/raw/main/imgs/menu.png)
 
 ---
 
@@ -100,18 +100,6 @@ Right-click a watch row and the menu gives you:
 - Pin this row as its own watch
 
 No dialogs. A toast in the status bar confirms the action.
-
----
-
-Or open `CodeRadar.sln` in Visual Studio and press **Ctrl+Shift+B**.
-
-The VSIX lands at `src\CodeRadar\bin\Release\CodeRadar.vsix`.
-
-### Debugging the extension
-
-Press **F5** with `CodeRadar` as the startup project. A second Visual Studio instance labelled **Experimental Instance** launches with the extension loaded. Open any project, hit a breakpoint, and Code Radar will populate.
-
----
 
 ## License
 

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
     <Metadata>
-        <Identity Id="CodeRadar.3a2f9d50-1c4b-4b3a-9b0e-5b9f6e0c8a11" Version="0.9.0" Language="en-US" Publisher="Code Radar" />
+        <Identity Id="CodeRadar.3a2f9d50-1c4b-4b3a-9b0e-5b9f6e0c8a11" Version="0.9.1" Language="en-US" Publisher="Andrei Amialchenia" />
         <DisplayName>Code Radar</DisplayName>
         <Description xml:space="preserve">A modern debugging companion for Visual Studio 2022+. Dockable tool window with LINQ chain decomposition, object search, snapshot &amp; compare, per-watch time-travel history, deep object export (JSON / C# / text), reveal-as-watches, clipboard-first context actions, pinned stack frames, and real-time exception insights.</Description>
         <MoreInfo>https://github.com/flash2048/CodeRadar</MoreInfo>
