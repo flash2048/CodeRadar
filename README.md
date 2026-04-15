@@ -9,6 +9,10 @@ If you've ever wanted to dump a deep object graph to JSON on the fly, compare an
 
 ![Code Radar window](https://github.com/flash2048/CodeRadar/raw/main/imgs/code_radar_window.png)
 
+## Download
+
+[Download the latest version here.](https://marketplace.visualstudio.com/items?itemName=AndreiAmialchenia.CodeRadar)
+
 ---
 
 ## What Code Radar gives you
