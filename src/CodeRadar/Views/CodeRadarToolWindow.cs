@@ -28,12 +28,14 @@ namespace CodeRadar.Views
             var package = (CodeRadarPackage)Package;
             var debugger = package.GetCodeRadarService<IDebuggerService>();
             var evaluator = package.GetCodeRadarService<IExpressionEvaluatorService>();
+            var imageExtractor = package.GetCodeRadarService<IImageExtractor>();
 
-            _viewModel = new CodeRadarViewModel(debugger, evaluator, package.JoinableTaskFactory);
+            _viewModel = new CodeRadarViewModel(debugger, evaluator, imageExtractor, package.JoinableTaskFactory);
             _viewModel.ExportRequested    += OnExportRequested;
             _viewModel.HistoryRequested   += OnHistoryRequested;
             _viewModel.CompareRequested   += OnCompareRequested;
             _viewModel.DecomposeRequested += OnDecomposeRequested;
+            _viewModel.ImageRequested     += OnImageRequested;
 
             var control = new CodeRadarControl { DataContext = _viewModel };
             Content = control;
@@ -49,6 +51,7 @@ namespace CodeRadar.Views
                     _viewModel.HistoryRequested   -= OnHistoryRequested;
                     _viewModel.CompareRequested   -= OnCompareRequested;
                     _viewModel.DecomposeRequested -= OnDecomposeRequested;
+                    _viewModel.ImageRequested     -= OnImageRequested;
                     _viewModel.Dispose();
                 }
             }
@@ -66,7 +69,35 @@ namespace CodeRadar.Views
             => ShowDialog(() => new CompareSnapshotsWindow(e.Watch));
 
         private void OnDecomposeRequested(object sender, DecomposeRequestedEventArgs e)
-            => ShowDialog(() => new LinqDecomposerWindow(e.OriginalExpression, e.Steps));
+        {
+            var package = (CodeRadarPackage)Package;
+            var evaluator = package.GetCodeRadarService<IExpressionEvaluatorService>();
+            var imageExtractor = package.GetCodeRadarService<IImageExtractor>();
+
+            Func<string, int, System.Threading.CancellationToken, System.Threading.Tasks.Task<Models.VariableNode>> evalFn = null;
+            if (evaluator != null)
+                evalFn = async (expr, depth, ct) => await evaluator.EvaluateAsync(expr, depth, ct);
+
+            Func<string, System.Threading.CancellationToken, System.Threading.Tasks.Task<ImageExtractResult>> imgFn = null;
+            if (imageExtractor != null)
+                imgFn = async (expr, ct) => await imageExtractor.TryExtractAsync(expr, ct);
+
+            ShowDialog(() => new LinqDecomposerWindow(e.OriginalExpression, e.Steps, evalFn, imgFn));
+        }
+
+        private void OnImageRequested(object sender, ImageRequestedEventArgs e)
+        {
+            if (e.Result == null || !e.Result.Success)
+            {
+                MessageBox.Show(
+                    "No image data could be decoded from this expression.\n\n"
+                    + (e.Result?.Error ?? string.Empty),
+                    "Code Radar - Show image",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            ShowDialog(() => new ImageViewerWindow(e.Result.ImageBytes, e.Result.DetectedFormat, e.Expression));
+        }
 
         private void ShowDialog(Func<Window> factory)
         {
@@ -100,7 +131,7 @@ namespace CodeRadar.Views
         }
 
         private void OnExportRequested(object sender, ExportRequestedEventArgs e)
-            => ShowDialog(() => new ObjectViewerWindow(e.Node, e.Caption));
+            => ShowDialog(() => new ObjectViewerWindow(e.Node, e.Caption, e.ReEvaluator));
 
         private static IntPtr TryGetMainWindow()
         {

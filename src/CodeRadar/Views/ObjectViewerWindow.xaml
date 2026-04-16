@@ -222,6 +222,7 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
@@ -248,13 +249,17 @@
                     <ComboBoxItem Content="Unlimited" />
                 </ComboBox>
 
-                <TextBlock Grid.Column="4" Name="StatusText"
+                <Button Grid.Column="4" Name="ReEvalButton" Content="Re-evaluate"
+                        Click="ReEvalButton_Click" Margin="12,0,0,0"
+                        ToolTip="Re-evaluate the expression at the selected depth (for large objects)" />
+
+                <TextBlock Grid.Column="5" Name="StatusText"
                            Margin="20,0,0,0" VerticalAlignment="Center"
                            Foreground="{StaticResource Accent}" FontStyle="Italic" />
 
-                <Button Grid.Column="5" Name="CopyButton" Content="Copy"
+                <Button Grid.Column="6" Name="CopyButton" Content="Copy"
                         Click="CopyButton_Click" Margin="8,0,0,0" />
-                <Button Grid.Column="6" Name="SaveButton" Content="Save As…"
+                <Button Grid.Column="7" Name="SaveButton" Content="Save As..."
                         Click="SaveButton_Click" Margin="8,0,0,0" />
             </Grid>
         </Border>

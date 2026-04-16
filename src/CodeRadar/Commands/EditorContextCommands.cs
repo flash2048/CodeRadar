@@ -112,7 +112,10 @@ namespace CodeRadar.Commands
                 VariableNode node;
                 try
                 {
-                    node = await evaluator.EvaluateAsync(expr, maxChildDepth: 5, CancellationToken.None);
+                    using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8)))
+                    {
+                        node = await evaluator.EvaluateAsync(expr, maxChildDepth: 2, cts.Token);
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -121,8 +124,14 @@ namespace CodeRadar.Commands
                         children: Array.Empty<VariableNode>());
                 }
 
+                // Build a re-evaluator so the viewer can load deeper on demand.
+                var capturedExpr = expr;
+                var capturedEval = evaluator;
+                Func<int, CancellationToken, Task<VariableNode>> reEval = async (depth, ct) =>
+                    await capturedEval.EvaluateAsync(capturedExpr, depth, ct);
+
                 await _package.JoinableTaskFactory.SwitchToMainThreadAsync();
-                DialogPresenter.Show(() => new ObjectViewerWindow(node, expr));
+                DialogPresenter.Show(() => new ObjectViewerWindow(node, expr, reEval));
             });
         }
 
@@ -141,14 +150,17 @@ namespace CodeRadar.Commands
                 if (segments.Count == 0) return;
 
                 var results = new List<LinqStepResult>(segments.Count);
+                using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15)))
+                {
                 foreach (var segment in segments)
                 {
+                    if (cts.Token.IsCancellationRequested) break;
                     LinqStepResult step;
                     try
                     {
-                        var node = await evaluator.EvaluateSequenceAsync(segment.CumulativeExpression, maxItems: 50, CancellationToken.None);
+                        var node = await evaluator.EvaluateSequenceAsync(segment.CumulativeExpression, maxItems: 50, cts.Token);
                         if (!node.IsValid)
-                            node = await evaluator.EvaluateAsync(segment.CumulativeExpression, maxChildDepth: 1, CancellationToken.None);
+                            node = await evaluator.EvaluateAsync(segment.CumulativeExpression, maxChildDepth: 1, cts.Token);
 
                         int? count = node.IsValid ? (int?)node.Children.Count : null;
                         bool truncated = node.Children.Count >= 50;
@@ -162,9 +174,20 @@ namespace CodeRadar.Commands
                     }
                     results.Add(step);
                 }
+                } // end using cts
+
+                var capturedEvaluator = evaluator;
+                var capturedExtractor = _package.GetCodeRadarService<IImageExtractor>();
+
+                Func<string, int, CancellationToken, Task<VariableNode>> evalFn =
+                    async (e2, depth, ct) => await capturedEvaluator.EvaluateAsync(e2, depth, ct);
+
+                Func<string, CancellationToken, Task<ImageExtractResult>> imgFn = null;
+                if (capturedExtractor != null)
+                    imgFn = async (e2, ct) => await capturedExtractor.TryExtractAsync(e2, ct);
 
                 await _package.JoinableTaskFactory.SwitchToMainThreadAsync();
-                DialogPresenter.Show(() => new LinqDecomposerWindow(expr, results));
+                DialogPresenter.Show(() => new LinqDecomposerWindow(expr, results, evalFn, imgFn));
             });
         }
 
@@ -182,7 +205,10 @@ namespace CodeRadar.Commands
                 ImageExtractResult result;
                 try
                 {
-                    result = await extractor.TryExtractAsync(expr, CancellationToken.None);
+                    using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8)))
+                    {
+                        result = await extractor.TryExtractAsync(expr, cts.Token);
+                    }
                 }
                 catch (Exception ex)
                 {

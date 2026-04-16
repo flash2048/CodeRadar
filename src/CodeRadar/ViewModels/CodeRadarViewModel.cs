@@ -15,6 +15,7 @@ namespace CodeRadar.ViewModels
     {
         private readonly IDebuggerService _debugger;
         private readonly IExpressionEvaluatorService _evaluator;
+        private readonly IImageExtractor _imageExtractor;
         private readonly JoinableTaskFactory _jtf;
 
         private readonly Dictionary<Guid, WatchItemViewModel> _watchVmsById = new Dictionary<Guid, WatchItemViewModel>();
@@ -32,14 +33,17 @@ namespace CodeRadar.ViewModels
         private ExceptionInfo _lastException;
         private string _statusMessage;
         private System.Windows.Threading.DispatcherTimer _statusTimer;
+        private CancellationTokenSource _refreshCts;
         private int _disposed;
 
         public const int RecentExpressionCapacity = 15;
 
-        public CodeRadarViewModel(IDebuggerService debugger, IExpressionEvaluatorService evaluator, JoinableTaskFactory jtf)
+        public CodeRadarViewModel(IDebuggerService debugger, IExpressionEvaluatorService evaluator,
+            IImageExtractor imageExtractor, JoinableTaskFactory jtf)
         {
             _debugger = debugger ?? throw new ArgumentNullException(nameof(debugger));
             _evaluator = evaluator ?? throw new ArgumentNullException(nameof(evaluator));
+            _imageExtractor = imageExtractor;
             _jtf = jtf ?? throw new ArgumentNullException(nameof(jtf));
 
             StackFrames = new ObservableCollection<StackFrameViewModel>();
@@ -56,7 +60,15 @@ namespace CodeRadar.ViewModels
 
             AddWatchCommand = new RelayCommand(_ => AddWatch(), _ => !string.IsNullOrWhiteSpace(NewWatchText));
             RemoveWatchCommand = new RelayCommand(RemoveWatch, w => w is WatchItemViewModel);
-            RefreshCommand = new RelayCommand(async () => await RefreshAsync(CancellationToken.None));
+            RefreshCommand = new RelayCommand(async () =>
+            {
+                _refreshCts?.Cancel();
+                _refreshCts?.Dispose();
+                var cts = new CancellationTokenSource(TimeSpan.FromSeconds(12));
+                _refreshCts = cts;
+                try { await RefreshAsync(cts.Token); }
+                catch (OperationCanceledException) { }
+            });
             ClearExceptionCommand = new RelayCommand(() => LastException = null, () => LastException != null);
             TogglePinCommand = new RelayCommand(TogglePin, f => f is StackFrameViewModel);
             TogglePreviewSequenceCommand = new RelayCommand(TogglePreviewSequence, w => w is WatchItemViewModel);
@@ -77,6 +89,7 @@ namespace CodeRadar.ViewModels
             ClearSnapshotsCommand = new RelayCommand(ClearSnapshots, w => w is WatchItemViewModel vm && vm.Snapshots.Count > 0);
             RevealAsWatchesCommand = new RelayCommand(RevealAsWatches, w => w is WatchItemViewModel);
             DecomposeLinqCommand = new RelayCommand(DecomposeLinq, w => w is WatchItemViewModel);
+            ShowImageCommand = new RelayCommand(ShowImage, w => w is WatchItemViewModel vm && vm.IsAddressable);
             ClearWatchSearchCommand = new RelayCommand(() => WatchSearch = string.Empty, () => !string.IsNullOrEmpty(WatchSearch));
 
             _state = _debugger.CurrentState;
@@ -217,6 +230,7 @@ namespace CodeRadar.ViewModels
         public System.Windows.Input.ICommand CopyAsJsonCommand { get; }
         public System.Windows.Input.ICommand CopyAsCSharpCommand { get; }
         public System.Windows.Input.ICommand PinAsWatchCommand { get; }
+        public System.Windows.Input.ICommand ShowImageCommand { get; }
 
         public string StatusMessage
         {
@@ -234,6 +248,7 @@ namespace CodeRadar.ViewModels
         public event EventHandler<HistoryRequestedEventArgs> HistoryRequested;
         public event EventHandler<CompareRequestedEventArgs> CompareRequested;
         public event EventHandler<DecomposeRequestedEventArgs> DecomposeRequested;
+        public event EventHandler<ImageRequestedEventArgs> ImageRequested;
 
         private void OnDebuggerStateChanged(object sender, DebuggerStateChangedEventArgs e)
         {
@@ -257,7 +272,19 @@ namespace CodeRadar.ViewModels
 
         private void OnBreakModeEntered(object sender, EventArgs e)
         {
-            _jtf.RunAsync(async () => await RefreshAsync(CancellationToken.None)).Task.Forget();
+            _jtf.RunAsync(async () =>
+            {
+                // Cancel any previous in-flight refresh so we don't pile up.
+                _refreshCts?.Cancel();
+                _refreshCts?.Dispose();
+                var cts = new CancellationTokenSource(TimeSpan.FromSeconds(12));
+                _refreshCts = cts;
+                try
+                {
+                    await RefreshAsync(cts.Token);
+                }
+                catch (OperationCanceledException) { }
+            }).Task.Forget();
         }
 
         private void OnExceptionRaised(object sender, ExceptionInfo e)
@@ -280,6 +307,7 @@ namespace CodeRadar.ViewModels
             var evaluated = new List<(Guid id, VariableNode node)>(_watchesById.Count);
             foreach (var kvp in _watchesById)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 var vm = _watchVmsById[kvp.Key];
                 VariableNode node = vm.IsSequencePreview
                     ? await _evaluator.EvaluateSequenceAsync(kvp.Value.Expression, maxItems: 50, cancellationToken).ConfigureAwait(true)
@@ -350,10 +378,13 @@ namespace CodeRadar.ViewModels
             {
                 _jtf.RunAsync(async () =>
                 {
-                    var node = await _evaluator.EvaluateAsync(expr.Expression, maxChildDepth: 1, CancellationToken.None);
-                    await _jtf.SwitchToMainThreadAsync();
-                    vm.UpdateFrom(node);
-                    vm.RecordHistory(BreakCount, DateTime.UtcNow);
+                    using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
+                    {
+                        var node = await _evaluator.EvaluateAsync(expr.Expression, maxChildDepth: 1, cts.Token);
+                        await _jtf.SwitchToMainThreadAsync();
+                        vm.UpdateFrom(node);
+                        vm.RecordHistory(BreakCount, DateTime.UtcNow);
+                    }
                 }).Task.Forget();
             }
             return vm;
@@ -385,11 +416,14 @@ namespace CodeRadar.ViewModels
 
             _jtf.RunAsync(async () =>
             {
-                var node = vm.IsSequencePreview
-                    ? await _evaluator.EvaluateSequenceAsync(expr.Expression, maxItems: 50, CancellationToken.None)
-                    : await _evaluator.EvaluateAsync(expr.Expression, maxChildDepth: 1, CancellationToken.None);
-                await _jtf.SwitchToMainThreadAsync();
-                vm.UpdateFrom(node);
+                using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6)))
+                {
+                    var node = vm.IsSequencePreview
+                        ? await _evaluator.EvaluateSequenceAsync(expr.Expression, maxItems: 50, cts.Token)
+                        : await _evaluator.EvaluateAsync(expr.Expression, maxChildDepth: 1, cts.Token);
+                    await _jtf.SwitchToMainThreadAsync();
+                    vm.UpdateFrom(node);
+                }
             }).Task.Forget();
         }
 
@@ -408,7 +442,10 @@ namespace CodeRadar.ViewModels
                     VariableNode node;
                     try
                     {
-                        node = await _evaluator.EvaluateAsync(rootExpr, maxChildDepth: 5, CancellationToken.None);
+                        using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8)))
+                        {
+                            node = await _evaluator.EvaluateAsync(rootExpr, maxChildDepth: 2, cts.Token);
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -417,7 +454,8 @@ namespace CodeRadar.ViewModels
                             children: System.Array.Empty<VariableNode>());
                     }
                     await _jtf.SwitchToMainThreadAsync();
-                    ExportRequested?.Invoke(this, new ExportRequestedEventArgs(node, rootExpr));
+                    ExportRequested?.Invoke(this, new ExportRequestedEventArgs(node, rootExpr,
+                        CreateReEvaluator(rootExpr)));
                 }).Task.Forget();
                 return;
             }
@@ -460,6 +498,33 @@ namespace CodeRadar.ViewModels
             if (string.IsNullOrEmpty(vm.ExpressionPath)) { Flash("Cannot pin - no evaluable path"); return; }
             AddWatchExpression(vm.ExpressionPath);
             Flash("Pinned " + vm.ExpressionPath + " as watch");
+        }
+
+        private void ShowImage(object parameter)
+        {
+            if (!(parameter is WatchItemViewModel vm)) return;
+            if (string.IsNullOrEmpty(vm.ExpressionPath) || _imageExtractor == null) return;
+            if (_debugger.CurrentState != DebuggerState.Break) return;
+
+            var expr = vm.ExpressionPath;
+            _jtf.RunAsync(async () =>
+            {
+                ImageExtractResult result;
+                try
+                {
+                    using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8)))
+                    {
+                        result = await _imageExtractor.TryExtractAsync(expr, cts.Token);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    result = new ImageExtractResult { Success = false, Error = ex.Message };
+                }
+
+                await _jtf.SwitchToMainThreadAsync();
+                ImageRequested?.Invoke(this, new ImageRequestedEventArgs(result, expr));
+            }).Task.Forget();
         }
 
         private static void TrySetClipboard(string text)
@@ -518,7 +583,10 @@ namespace CodeRadar.ViewModels
                     VariableNode node;
                     try
                     {
-                        node = await _evaluator.EvaluateAsync(expr.Expression, maxChildDepth: 5, CancellationToken.None);
+                        using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8)))
+                        {
+                            node = await _evaluator.EvaluateAsync(expr.Expression, maxChildDepth: 2, cts.Token);
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -567,10 +635,13 @@ namespace CodeRadar.ViewModels
             {
                 _jtf.RunAsync(async () =>
                 {
-                    var node = await _evaluator.EvaluateAsync(expr.Expression, maxChildDepth: 1, CancellationToken.None);
-                    await _jtf.SwitchToMainThreadAsync();
-                    vm.UpdateFrom(node);
-                    DoReveal(vm, expr.Expression);
+                    using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
+                    {
+                        var node = await _evaluator.EvaluateAsync(expr.Expression, maxChildDepth: 1, cts.Token);
+                        await _jtf.SwitchToMainThreadAsync();
+                        vm.UpdateFrom(node);
+                        DoReveal(vm, expr.Expression);
+                    }
                 }).Task.Forget();
                 return;
             }
@@ -607,16 +678,19 @@ namespace CodeRadar.ViewModels
 
             _jtf.RunAsync(async () =>
             {
+                using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15)))
+                {
                 var results = new List<LinqStepResult>(segments.Count);
                 foreach (var segment in segments)
                 {
+                    if (cts.Token.IsCancellationRequested) break;
                     LinqStepResult step;
                     try
                     {
-                        var node = await _evaluator.EvaluateSequenceAsync(segment.CumulativeExpression, maxItems: 50, CancellationToken.None);
+                        var node = await _evaluator.EvaluateSequenceAsync(segment.CumulativeExpression, maxItems: 50, cts.Token);
                         if (!node.IsValid)
                         {
-                            node = await _evaluator.EvaluateAsync(segment.CumulativeExpression, maxChildDepth: 1, CancellationToken.None);
+                            node = await _evaluator.EvaluateAsync(segment.CumulativeExpression, maxChildDepth: 1, cts.Token);
                         }
                         int? count = node.IsValid ? (int?)node.Children.Count : null;
                         bool truncated = node.Children.Count >= 50;
@@ -633,6 +707,7 @@ namespace CodeRadar.ViewModels
 
                 await _jtf.SwitchToMainThreadAsync();
                 DecomposeRequested?.Invoke(this, new DecomposeRequestedEventArgs(expr.Expression, results));
+                } // end using cts
             }).Task.Forget();
         }
 
@@ -692,12 +767,27 @@ namespace CodeRadar.ViewModels
                 vm.IsValid, vm.IsNull, children);
         }
 
+        private Func<int, CancellationToken, Task<VariableNode>> CreateReEvaluator(string expression)
+        {
+            return async (depth, ct) =>
+            {
+                if (_disposed != 0 || _debugger.CurrentState != DebuggerState.Break)
+                    return new VariableNode(expression, "<not in break mode>", string.Empty,
+                        isValid: false, isNull: false, children: System.Array.Empty<VariableNode>());
+
+                return await _evaluator.EvaluateAsync(expression, depth, ct);
+            };
+        }
+
         public void Dispose()
         {
             if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
             _debugger.StateChanged -= OnDebuggerStateChanged;
             _debugger.BreakModeEntered -= OnBreakModeEntered;
             _debugger.ExceptionRaised -= OnExceptionRaised;
+            _refreshCts?.Cancel();
+            _refreshCts?.Dispose();
+            _refreshCts = null;
             _statusTimer?.Stop();
             _statusTimer = null;
         }
@@ -707,9 +797,16 @@ namespace CodeRadar.ViewModels
 
     public sealed class ExportRequestedEventArgs : EventArgs
     {
-        public ExportRequestedEventArgs(VariableNode node, string caption) { Node = node; Caption = caption; }
+        public ExportRequestedEventArgs(VariableNode node, string caption,
+            Func<int, CancellationToken, Task<VariableNode>> reEvaluator = null)
+        {
+            Node = node;
+            Caption = caption;
+            ReEvaluator = reEvaluator;
+        }
         public VariableNode Node { get; }
         public string Caption { get; }
+        public Func<int, CancellationToken, Task<VariableNode>> ReEvaluator { get; }
     }
 
     public sealed class HistoryRequestedEventArgs : EventArgs
@@ -733,6 +830,17 @@ namespace CodeRadar.ViewModels
         }
         public string OriginalExpression { get; }
         public IReadOnlyList<LinqStepResult> Steps { get; }
+    }
+
+    public sealed class ImageRequestedEventArgs : EventArgs
+    {
+        public ImageRequestedEventArgs(ImageExtractResult result, string expression)
+        {
+            Result = result;
+            Expression = expression ?? string.Empty;
+        }
+        public ImageExtractResult Result { get; }
+        public string Expression { get; }
     }
 
     internal static class WatchItemViewModelTagExtensions

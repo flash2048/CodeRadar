@@ -49,7 +49,8 @@ namespace CodeRadar.Services
             {
                 try
                 {
-                    var expr = debugger.GetExpression(attempt, UseAutoExpandRules: true, Timeout: 5000);
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var expr = debugger.GetExpression(attempt, UseAutoExpandRules: true, Timeout: 2000);
                     if (expr == null || !expr.IsValidValue)
                     {
                         lastError = expr?.Value;

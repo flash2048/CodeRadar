@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vs="clr-namespace:Microsoft.VisualStudio.Shell;assembly=Microsoft.VisualStudio.Shell.15.0"
         Title="LINQ Chain Decomposer"
-        Width="780" Height="560"
+        Width="820" Height="600"
         WindowStartupLocation="CenterOwner"
         Background="#1E1E1E"
         Foreground="#F1F1F1"
@@ -18,6 +18,20 @@
         <SolidColorBrush x:Key="Name"   Color="#9CDCFE" />
         <SolidColorBrush x:Key="Danger" Color="#F48771" />
         <SolidColorBrush x:Key="RowAlt" Color="#161616" />
+
+        <!-- Recursive template for VariableNode children -->
+        <HierarchicalDataTemplate x:Key="VariableNodeTemplate"
+                                  ItemsSource="{Binding Children}">
+            <StackPanel Orientation="Horizontal" Margin="0,1,0,1">
+                <TextBlock Text="{Binding Name}" FontWeight="SemiBold"
+                           Foreground="{StaticResource Name}" />
+                <TextBlock Text=" = " Foreground="{StaticResource Muted}" />
+                <TextBlock Text="{Binding Value}" />
+                <TextBlock Text=" : " Foreground="{StaticResource Muted}"
+                           Margin="6,0,0,0" />
+                <TextBlock Text="{Binding Type}" Foreground="{StaticResource Type}" />
+            </StackPanel>
+        </HierarchicalDataTemplate>
     </Window.Resources>
 
     <DockPanel Margin="10">
@@ -71,24 +85,33 @@
                                 <TextBlock Text="{Binding Result.Error}" Foreground="{StaticResource Danger}" />
                             </Border>
 
-                            <!-- Sample items -->
-                            <ItemsControl ItemsSource="{Binding Result.SampleItems}" Margin="16,6,0,0"
-                                          Visibility="{Binding HasSamplesVisibility}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <StackPanel Orientation="Horizontal" Margin="0,1,0,1">
-                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold"
-                                                       Foreground="{StaticResource Name}" />
-                                            <TextBlock Text=" = " Foreground="{StaticResource Muted}" />
-                                            <TextBlock Text="{Binding Value}" />
-                                            <TextBlock Text=" : " Foreground="{StaticResource Muted}"
-                                                       Margin="6,0,0,0" />
-                                            <TextBlock Text="{Binding Type}" Foreground="{StaticResource Type}" />
-                                        </StackPanel>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                            <TextBlock Text="… more elements not shown (truncated at 50)"
+                            <!-- Sample items as expandable tree -->
+                            <TreeView x:Name="SampleTree"
+                                      ItemsSource="{Binding Result.SampleItems}" Margin="8,6,0,0"
+                                      Visibility="{Binding HasSamplesVisibility}"
+                                      Background="Transparent" BorderThickness="0"
+                                      ItemTemplate="{StaticResource VariableNodeTemplate}">
+                                <TreeView.ItemContainerStyle>
+                                    <Style TargetType="TreeViewItem">
+                                        <Setter Property="Foreground" Value="#F1F1F1" />
+                                        <Setter Property="IsExpanded" Value="False" />
+                                    </Style>
+                                </TreeView.ItemContainerStyle>
+                                <TreeView.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="View / Export object..."
+                                                  Click="ViewObject_Click" />
+                                        <MenuItem Header="Show image..."
+                                                  Click="ShowImage_Click" />
+                                        <Separator />
+                                        <MenuItem Header="Copy value"
+                                                  Click="CopyValue_Click" />
+                                        <MenuItem Header="Copy as JSON"
+                                                  Click="CopyAsJson_Click" />
+                                    </ContextMenu>
+                                </TreeView.ContextMenu>
+                            </TreeView>
+                            <TextBlock Text="... more elements not shown (truncated at 50)"
                                        Foreground="{StaticResource Muted}" Margin="16,4,0,0"
                                        FontStyle="Italic"
                                        Visibility="{Binding TruncatedVisibility}" />

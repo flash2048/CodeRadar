@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using CodeRadar.Models;
@@ -9,13 +11,21 @@ namespace CodeRadar.Views
 {
     public partial class ObjectViewerWindow : Window
     {
-        private readonly VariableNode _root;
+        private VariableNode _root;
+        private readonly Func<int, CancellationToken, Task<VariableNode>> _reEvaluator;
+        private CancellationTokenSource _reEvalCts;
 
-        public ObjectViewerWindow(VariableNode root, string caption)
+        public ObjectViewerWindow(VariableNode root, string caption,
+            Func<int, CancellationToken, Task<VariableNode>> reEvaluator = null)
         {
             _root = root ?? throw new ArgumentNullException(nameof(root));
+            _reEvaluator = reEvaluator;
             InitializeComponent();
             Title = string.IsNullOrWhiteSpace(caption) ? "Object Viewer" : $"Object Viewer - {caption}";
+
+            if (_reEvaluator == null)
+                ReEvalButton.Visibility = Visibility.Collapsed;
+
             Refresh();
         }
 
@@ -33,17 +43,23 @@ namespace CodeRadar.Views
             }
         }
 
+        private int? SelectedDepth
+        {
+            get
+            {
+                if (DepthCombo?.SelectedItem is ComboBoxItem d)
+                {
+                    var text = (d.Content as string) ?? string.Empty;
+                    if (int.TryParse(text, out var n)) return n;
+                }
+                return null; // "Unlimited"
+            }
+        }
+
         private ExportOptions BuildOptions()
         {
             var opts = new ExportOptions();
-
-            if (DepthCombo?.SelectedItem is ComboBoxItem d)
-            {
-                var text = (d.Content as string) ?? string.Empty;
-                if (int.TryParse(text, out var n)) opts.MaxDepth = n;
-                else opts.MaxDepth = null;
-            }
-
+            opts.MaxDepth = SelectedDepth;
             opts.UseTypeFullName     = FullTypeCheck?.IsChecked       == true;
             opts.IgnoreIndexes       = IgnoreIndexesCheck?.IsChecked  == true;
             opts.IgnoreDefaultValues = IgnoreDefaultsCheck?.IsChecked == true;
@@ -61,6 +77,43 @@ namespace CodeRadar.Views
         }
 
         private void OptionsChanged(object sender, RoutedEventArgs e) => Refresh();
+
+        private async void ReEvalButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_reEvaluator == null) return;
+
+            int depth = SelectedDepth ?? 10;
+            ReEvalButton.IsEnabled = false;
+            StatusText.Text = $"Evaluating at depth {depth}...";
+
+            _reEvalCts?.Cancel();
+            _reEvalCts?.Dispose();
+            var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            _reEvalCts = cts;
+
+            try
+            {
+                var node = await _reEvaluator(depth, cts.Token);
+                if (node != null)
+                {
+                    _root = node;
+                    Refresh();
+                    StatusText.Text = "Loaded.";
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                StatusText.Text = "Evaluation timed out.";
+            }
+            catch (Exception ex)
+            {
+                StatusText.Text = "Re-evaluate failed: " + ex.Message;
+            }
+            finally
+            {
+                ReEvalButton.IsEnabled = true;
+            }
+        }
 
         private void CopyButton_Click(object sender, RoutedEventArgs e)
         {

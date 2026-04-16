@@ -13,10 +13,13 @@ namespace CodeRadar.Services
 {
     internal sealed class ExpressionEvaluatorService : IExpressionEvaluatorService
     {
-        // Hard cap on children materialised per node. Without this, evaluating a Dictionary<,>
-        // with a few hundred thousand entries or an array with a million elements can freeze
-        // the UI for seconds while EnvDTE walks every child through COM.
-        private const int MaxChildrenPerNode = 512;
+        // Cap children per node to avoid enumerating huge collections through COM.
+        private const int MaxChildrenPerNode = 200;
+
+        // Per-GetExpression timeout in milliseconds. Keep low so a single stuck
+        // expression doesn't freeze the shell for long.
+        private const int DefaultExprTimeoutMs = 600;
+        private const int SequenceExprTimeoutMs = 2500;
 
         private readonly JoinableTaskFactory _jtf;
 
@@ -27,7 +30,11 @@ namespace CodeRadar.Services
 
         public async Task<VariableNode> EvaluateAsync(string expression, int maxChildDepth, CancellationToken cancellationToken)
         {
-            return await EvaluateCoreAsync(expression, expression, maxChildDepth, timeoutMs: 1000, cancellationToken);
+            // Overall timeout: 3 seconds base + 2 seconds per depth level.
+            int overallMs = 3000 + maxChildDepth * 2000;
+            return await WithOverallTimeout(
+                () => EvaluateCoreAsync(expression, expression, maxChildDepth, DefaultExprTimeoutMs, cancellationToken),
+                expression, overallMs, cancellationToken);
         }
 
         public async Task<VariableNode> EvaluateSequenceAsync(string expression, int maxItems, CancellationToken cancellationToken)
@@ -41,12 +48,29 @@ namespace CodeRadar.Services
             var take = Math.Max(1, maxItems);
             var wrapped = $"System.Linq.Enumerable.ToArray(System.Linq.Enumerable.Take({expression}, {take}))";
 
-            return await EvaluateCoreAsync(
-                displayName: expression,
-                expression: wrapped,
-                maxChildDepth: 1,
-                timeoutMs: 3000,
-                cancellationToken);
+            return await WithOverallTimeout(
+                () => EvaluateCoreAsync(displayName: expression, expression: wrapped, maxChildDepth: 1, SequenceExprTimeoutMs, cancellationToken),
+                expression, 6000, cancellationToken);
+        }
+
+        private async Task<VariableNode> WithOverallTimeout(
+            Func<Task<VariableNode>> work, string displayName, int timeoutMs, CancellationToken outer)
+        {
+            using (var linked = CancellationTokenSource.CreateLinkedTokenSource(outer))
+            {
+                linked.CancelAfter(timeoutMs);
+                try
+                {
+                    return await work();
+                }
+                catch (OperationCanceledException) when (!outer.IsCancellationRequested)
+                {
+                    // Our internal timeout fired, not the caller's token.
+                    return new VariableNode(displayName ?? string.Empty,
+                        "<evaluation timed out>", string.Empty,
+                        isValid: false, isNull: false, children: Array.Empty<VariableNode>());
+                }
+            }
         }
 
         private async Task<VariableNode> EvaluateCoreAsync(string displayName, string expression, int maxChildDepth, int timeoutMs, CancellationToken cancellationToken)
@@ -56,6 +80,8 @@ namespace CodeRadar.Services
                 return new VariableNode(displayName ?? string.Empty, "<empty>", string.Empty,
                     isValid: false, isNull: false, children: Array.Empty<VariableNode>());
             }
+
+            cancellationToken.ThrowIfCancellationRequested();
 
             await _jtf.SwitchToMainThreadAsync(cancellationToken);
 
@@ -71,8 +97,10 @@ namespace CodeRadar.Services
             Expression expr;
             try
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 expr = debugger.GetExpression(expression, UseAutoExpandRules: true, Timeout: timeoutMs);
             }
+            catch (OperationCanceledException) { throw; }
             catch (Exception ex)
             {
                 return new VariableNode(displayName, $"<eval failed: {ex.Message}>", string.Empty,
@@ -96,7 +124,7 @@ namespace CodeRadar.Services
             bool isNull = isValid && IsNullValue(value);
 
             IReadOnlyList<VariableNode> children = Array.Empty<VariableNode>();
-            if (remainingDepth > 0 && isValid && !isNull)
+            if (remainingDepth > 0 && isValid && !isNull && !cancellationToken.IsCancellationRequested)
             {
                 try
                 {
@@ -105,7 +133,7 @@ namespace CodeRadar.Services
                     if (memberCount > 0)
                     {
                         int take = memberCount > MaxChildrenPerNode ? MaxChildrenPerNode : memberCount;
-                        var list = new List<VariableNode>(take);
+                        var list = new List<VariableNode>(Math.Min(take, 64));
                         int i = 0;
                         foreach (Expression child in members)
                         {
@@ -117,14 +145,13 @@ namespace CodeRadar.Services
                             }
                             catch
                             {
-                                // A single malformed child must not abort the whole sibling walk.
                             }
                             i++;
                         }
-                        if (memberCount > take)
+                        if (memberCount > take && !cancellationToken.IsCancellationRequested)
                         {
                             list.Add(new VariableNode(
-                                $"… {memberCount - take} more",
+                                $"... {memberCount - take} more",
                                 $"(truncated, total {memberCount})",
                                 string.Empty,
                                 isValid: false, isNull: false,

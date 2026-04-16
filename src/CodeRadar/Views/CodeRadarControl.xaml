@@ -554,8 +554,13 @@
                                          RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
                                CommandParameter="{Binding PlacementTarget.SelectedItem,
                                                  RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}" />
-                                <MenuItem Header="Decompose LINQ chain…"
+                                <MenuItem Header="Decompose LINQ chain..."
                                Command="{Binding PlacementTarget.Tag.DecomposeLinqCommand,
+                                         RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
+                               CommandParameter="{Binding PlacementTarget.SelectedItem,
+                                                 RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}" />
+                                <MenuItem Header="Show image..."
+                               Command="{Binding PlacementTarget.Tag.ShowImageCommand,
                                          RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
                                CommandParameter="{Binding PlacementTarget.SelectedItem,
                                                  RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}" />
