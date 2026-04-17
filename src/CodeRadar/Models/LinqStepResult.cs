@@ -4,13 +4,17 @@ namespace CodeRadar.Models
 {
     public sealed class LinqStepResult
     {
-        public LinqStepResult(string label, string cumulativeExpression, int? count,
-            bool truncated, IReadOnlyList<VariableNode> sampleItems, string error)
+        public LinqStepResult(string label, string cumulativeExpression,
+            int? totalCount, bool countTruncated,
+            int sampleSize, bool sampleTruncated,
+            IReadOnlyList<VariableNode> sampleItems, string error)
         {
             Label = label ?? string.Empty;
             CumulativeExpression = cumulativeExpression ?? string.Empty;
-            Count = count;
-            Truncated = truncated;
+            TotalCount = totalCount;
+            CountTruncated = countTruncated;
+            SampleSize = sampleSize;
+            SampleTruncated = sampleTruncated;
             SampleItems = sampleItems ?? System.Array.Empty<VariableNode>();
             Error = error ?? string.Empty;
         }
@@ -19,9 +23,18 @@ namespace CodeRadar.Models
 
         public string CumulativeExpression { get; }
 
-        public int? Count { get; }
+        // True total element count of the sequence (capped at a safety max).
+        // Null if not enumerable or could not be computed.
+        public int? TotalCount { get; }
 
-        public bool Truncated { get; }
+        // If true, the real sequence had at least TotalCount elements and could have more.
+        public bool CountTruncated { get; }
+
+        // Number of sample items captured (up to the materialisation cap).
+        public int SampleSize { get; }
+
+        // If true, the sample list was cut off before exhausting the sequence.
+        public bool SampleTruncated { get; }
 
         public IReadOnlyList<VariableNode> SampleItems { get; }
 

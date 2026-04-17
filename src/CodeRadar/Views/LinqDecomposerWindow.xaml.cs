@@ -31,7 +31,7 @@ namespace CodeRadar.Views
                 foreach (var s in steps)
                 {
                     rows.Add(new StepRow(++n, s, prevCount));
-                    if (s.Count.HasValue) prevCount = s.Count;
+                    if (s.TotalCount.HasValue) prevCount = s.TotalCount;
                 }
             }
             StepList.ItemsSource = rows;
@@ -181,20 +181,35 @@ namespace CodeRadar.Views
             public LinqStepResult Result { get; }
             public int? PreviousCount { get; }
 
+            // Real sequence count with delta arrow - uses TotalCount (NOT sample size).
             public string CountText
             {
                 get
                 {
                     if (Result.HasError) return string.Empty;
-                    if (!Result.Count.HasValue) return string.Empty;
+                    if (!Result.TotalCount.HasValue) return string.Empty;
 
-                    string suffix = Result.Truncated ? "+" : string.Empty;
-                    if (PreviousCount.HasValue && PreviousCount.Value != Result.Count.Value)
+                    string suffix = Result.CountTruncated ? "+" : string.Empty;
+                    if (PreviousCount.HasValue && PreviousCount.Value != Result.TotalCount.Value)
                     {
-                        char arrow = Result.Count.Value >= PreviousCount.Value ? '\u25B2' : '\u25BC';
-                        return $"{PreviousCount.Value} -> {Result.Count.Value}{suffix} {arrow}";
+                        char arrow = Result.TotalCount.Value >= PreviousCount.Value ? '\u25B2' : '\u25BC';
+                        return $"{PreviousCount.Value} -> {Result.TotalCount.Value}{suffix} {arrow}";
                     }
-                    return $"{Result.Count.Value}{suffix} item(s)";
+                    return $"{Result.TotalCount.Value}{suffix} item(s)";
+                }
+            }
+
+            // Clearly labels that the samples below are a preview, not the full sequence.
+            public string SampleLabelText
+            {
+                get
+                {
+                    if (Result.SampleSize == 0) return string.Empty;
+                    if (Result.SampleTruncated && Result.TotalCount.HasValue)
+                        return $"Sample of first {Result.SampleSize} of {Result.TotalCount.Value}{(Result.CountTruncated ? "+" : string.Empty)} items:";
+                    if (Result.SampleTruncated)
+                        return $"Sample of first {Result.SampleSize} items (more available):";
+                    return $"All {Result.SampleSize} item(s):";
                 }
             }
 
@@ -202,7 +217,7 @@ namespace CodeRadar.Views
             public Visibility HasSamplesVisibility =>
                 (Result.SampleItems != null && Result.SampleItems.Count > 0) ? Visibility.Visible : Visibility.Collapsed;
             public Visibility TruncatedVisibility =>
-                Result.Truncated ? Visibility.Visible : Visibility.Collapsed;
+                Result.SampleTruncated ? Visibility.Visible : Visibility.Collapsed;
         }
     }
 }

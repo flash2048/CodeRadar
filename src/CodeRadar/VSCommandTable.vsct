@@ -6,9 +6,17 @@
   <Commands package="guidCodeRadarPackage">
 
     <Groups>
-      <!-- Top-level: View → Other Windows → Code Radar -->
+      <!-- Primary placement: View → Other Windows → Code Radar -->
       <Group guid="guidCodeRadarCommandSet" id="CodeRadarMenuGroup" priority="0x0600">
         <Parent guid="guidSHLMainMenu" id="IDG_VS_WNDO_OTRWNDWS1" />
+      </Group>
+
+      <!-- Fallback placement: Tools menu, always present across every VS version
+           including Visual Studio 2026. This gives users a second, reliable way
+           to reach the tool window if 'View -> Other Windows' entries don't
+           surface as expected. -->
+      <Group guid="guidCodeRadarCommandSet" id="CodeRadarToolsGroup" priority="0x0600">
+        <Parent guid="guidSHLMainMenu" id="IDG_VS_TOOLS_EXT_TOOLS" />
       </Group>
 
       <!-- Anchor group inside the editor code-window context menu. -->
@@ -125,6 +133,15 @@
     </Bitmaps>
   </Commands>
 
+  <!-- Extra placements for the Show Code Radar Window command so it surfaces
+       under Extensions and Tools as well. The primary placement lives in the
+       Buttons section above (under View -> Other Windows). -->
+  <CommandPlacements>
+    <CommandPlacement guid="guidCodeRadarCommandSet" id="ShowCodeRadarWindowCommandId" priority="0x0100">
+      <Parent guid="guidCodeRadarCommandSet" id="CodeRadarToolsGroup" />
+    </CommandPlacement>
+  </CommandPlacements>
+
   <!-- ===========================================================
        Keyboard shortcuts. Scoped to the text editor so they don't
        fight with Solution Explorer / design-surface defaults.
@@ -149,6 +166,8 @@
       <!-- Groups / menus -->
       <IDSymbol name="CodeRadarMenuGroup"              value="0x1020" />
       <IDSymbol name="CodeRadarEditorContextGroup"     value="0x1021" />
+      <IDSymbol name="CodeRadarExtensionsGroup"        value="0x1022" />
+      <IDSymbol name="CodeRadarToolsGroup"             value="0x1023" />
       <IDSymbol name="CodeRadarSubMenu"                value="0x1030" />
       <IDSymbol name="CodeRadarSubMenuGroup"           value="0x1040" />
 

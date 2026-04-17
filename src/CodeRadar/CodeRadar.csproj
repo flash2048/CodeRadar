@@ -73,6 +73,7 @@
     <Compile Include="Models\WatchExpression.cs" />
     <Compile Include="Models\WatchHistoryEntry.cs" />
     <Compile Include="Models\WatchSnapshot.cs" />
+    <Compile Include="Services\CodeRadarLimits.cs" />
     <Compile Include="Services\DebuggerService.cs" />
     <Compile Include="Services\DebuggerStateChangedEventArgs.cs" />
     <Compile Include="Services\ExpressionEvaluatorService.cs" />

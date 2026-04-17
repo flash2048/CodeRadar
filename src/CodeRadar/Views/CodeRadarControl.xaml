@@ -504,9 +504,15 @@
                                 <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
                                 <EventSetter Event="PreviewMouseRightButtonDown"
                                   Handler="TreeViewItem_PreviewMouseRightButtonDown" />
+                                <EventSetter Event="Expanded"
+                                  Handler="TreeViewItem_Expanded" />
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding IsSearchMatch}" Value="True">
                                         <Setter Property="Background" Value="{StaticResource CR.AccentSoft}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding IsLazyPlaceholder}" Value="True">
+                                        <Setter Property="Foreground" Value="{StaticResource CR.MutedText}" />
+                                        <Setter Property="FontStyle" Value="Italic" />
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>

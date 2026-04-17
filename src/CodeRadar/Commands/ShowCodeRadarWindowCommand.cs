@@ -47,15 +47,37 @@ namespace CodeRadar.Commands
         {
             await _package.JoinableTaskFactory.SwitchToMainThreadAsync();
 
-            var window = await _package.ShowToolWindowAsync(
-                typeof(CodeRadarToolWindow),
-                id: 0,
-                create: true,
-                cancellationToken: _package.DisposalToken);
-
-            if (window?.Frame is IVsWindowFrame frame)
+            ToolWindowPane window;
+            try
             {
-                ErrorHandler.ThrowOnFailure(frame.Show());
+                window = await _package.ShowToolWindowAsync(
+                    typeof(CodeRadarToolWindow),
+                    id: 0,
+                    create: true,
+                    cancellationToken: _package.DisposalToken);
+            }
+            catch (Exception ex)
+            {
+                await LogAsync(ex);
+                if (_package is CodeRadarPackage pkg)
+                    await pkg.LogErrorAsync("ShowToolWindowAsync failed: " + ex);
+                throw;
+            }
+
+            if (window == null)
+            {
+                if (_package is CodeRadarPackage pkg)
+                    await pkg.LogErrorAsync("ShowToolWindowAsync returned null tool window pane.");
+                return;
+            }
+
+            if (window.Frame is IVsWindowFrame frame)
+            {
+                int hr = frame.Show();
+                if (ErrorHandler.Failed(hr) && _package is CodeRadarPackage pkg)
+                    await pkg.LogErrorAsync($"IVsWindowFrame.Show returned HRESULT 0x{hr:X8}.");
+                else
+                    ErrorHandler.ThrowOnFailure(hr);
             }
         }
 

@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vs="clr-namespace:Microsoft.VisualStudio.Shell;assembly=Microsoft.VisualStudio.Shell.15.0"
         Title="Compare snapshots"
-        Width="900" Height="600"
+        Width="1060" Height="640"
         WindowStartupLocation="CenterOwner"
         Background="#1E1E1E"
         Foreground="#F1F1F1"
@@ -11,48 +11,141 @@
         FontSize="{DynamicResource {x:Static vs:VsFonts.EnvironmentFontSizeKey}}">
 
     <Window.Resources>
-        <SolidColorBrush x:Key="Border" Color="#3F3F46" />
-        <SolidColorBrush x:Key="Muted"  Color="#7A7A7A" />
-        <SolidColorBrush x:Key="Accent" Color="#FFC83D" />
-        <SolidColorBrush x:Key="Changed" Color="#33FFC83D" />
-        <SolidColorBrush x:Key="Added"   Color="#334EC9B0" />
-        <SolidColorBrush x:Key="Removed" Color="#33F48771" />
+        <SolidColorBrush x:Key="Border"      Color="#3F3F46" />
+        <SolidColorBrush x:Key="Muted"       Color="#7A7A7A" />
+        <SolidColorBrush x:Key="Accent"      Color="#FFC83D" />
+        <SolidColorBrush x:Key="ChangedSoft" Color="#33FFC83D" />
+        <SolidColorBrush x:Key="AddedSoft"   Color="#334EC9B0" />
+        <SolidColorBrush x:Key="RemovedSoft" Color="#33F48771" />
+        <SolidColorBrush x:Key="ChangedStrong" Color="#FFC83D" />
+        <SolidColorBrush x:Key="AddedStrong"   Color="#4EC9B0" />
+        <SolidColorBrush x:Key="RemovedStrong" Color="#F48771" />
+        <SolidColorBrush x:Key="PanelBg"     Color="#252526" />
+
+        <!-- Keep the selection background transparent so it doesn't fight with
+             the diff indicators. We still show selection via a left-accent bar. -->
+        <Style TargetType="TreeViewItem">
+            <Setter Property="Foreground" Value="#F1F1F1" />
+            <Setter Property="Padding" Value="2" />
+        </Style>
     </Window.Resources>
 
     <DockPanel Margin="10">
+
+        <!-- Snapshot pickers -->
         <Grid DockPanel.Dock="Top" Margin="0,0,0,8">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
             <StackPanel Grid.Column="0" Orientation="Horizontal">
-                <TextBlock Text="Left:" VerticalAlignment="Center" Margin="0,0,8,0"
-                           Foreground="{StaticResource Muted}" />
+                <TextBlock Text="Before" VerticalAlignment="Center" Margin="0,0,8,0"
+                           Foreground="{StaticResource Muted}" FontWeight="SemiBold" />
                 <ComboBox x:Name="LeftCombo" Width="280"
                           DisplayMemberPath="DisplayName"
                           SelectionChanged="ComboChanged" />
             </StackPanel>
             <StackPanel Grid.Column="1" Orientation="Horizontal">
-                <TextBlock Text="Right:" VerticalAlignment="Center" Margin="0,0,8,0"
-                           Foreground="{StaticResource Muted}" />
+                <TextBlock Text="After" VerticalAlignment="Center" Margin="0,0,8,0"
+                           Foreground="{StaticResource Muted}" FontWeight="SemiBold" />
                 <ComboBox x:Name="RightCombo" Width="280"
                           DisplayMemberPath="DisplayName"
                           SelectionChanged="ComboChanged" />
-                <TextBlock x:Name="DiffSummary" Margin="16,0,0,0" VerticalAlignment="Center"
-                           Foreground="{StaticResource Accent}" />
             </StackPanel>
         </Grid>
 
+        <!-- Summary / legend / filter bar -->
+        <Border DockPanel.Dock="Top" Padding="10,8" Margin="0,0,0,8"
+                Background="{StaticResource PanelBg}"
+                BorderBrush="{StaticResource Border}" BorderThickness="1"
+                CornerRadius="3">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <!-- Changed chip -->
+                <Border Grid.Column="0" CornerRadius="10" Padding="10,3" Margin="0,0,8,0"
+                        Background="{StaticResource ChangedSoft}"
+                        BorderBrush="{StaticResource ChangedStrong}" BorderThickness="1">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE70F;" FontFamily="Segoe MDL2 Assets" FontSize="11"
+                                   Foreground="{StaticResource ChangedStrong}" VerticalAlignment="Center" />
+                        <TextBlock x:Name="ChangedCountText" Margin="6,0,0,0"
+                                   Foreground="{StaticResource ChangedStrong}"
+                                   VerticalAlignment="Center" Text="0 changed" />
+                    </StackPanel>
+                </Border>
+
+                <!-- Added chip -->
+                <Border Grid.Column="1" CornerRadius="10" Padding="10,3" Margin="0,0,8,0"
+                        Background="{StaticResource AddedSoft}"
+                        BorderBrush="{StaticResource AddedStrong}" BorderThickness="1">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="+" FontWeight="Bold" FontSize="13"
+                                   Foreground="{StaticResource AddedStrong}" VerticalAlignment="Center" />
+                        <TextBlock x:Name="AddedCountText" Margin="6,0,0,0"
+                                   Foreground="{StaticResource AddedStrong}"
+                                   VerticalAlignment="Center" Text="0 added" />
+                    </StackPanel>
+                </Border>
+
+                <!-- Removed chip -->
+                <Border Grid.Column="2" CornerRadius="10" Padding="10,3"
+                        Background="{StaticResource RemovedSoft}"
+                        BorderBrush="{StaticResource RemovedStrong}" BorderThickness="1">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#x2212;" FontWeight="Bold" FontSize="13"
+                                   Foreground="{StaticResource RemovedStrong}" VerticalAlignment="Center" />
+                        <TextBlock x:Name="RemovedCountText" Margin="6,0,0,0"
+                                   Foreground="{StaticResource RemovedStrong}"
+                                   VerticalAlignment="Center" Text="0 removed" />
+                    </StackPanel>
+                </Border>
+
+                <TextBlock Grid.Column="3" x:Name="IdenticalText"
+                           Margin="16,0,0,0" VerticalAlignment="Center"
+                           Foreground="{StaticResource Muted}" FontStyle="Italic" />
+
+                <!-- Filter toggle -->
+                <CheckBox Grid.Column="4" x:Name="ShowOnlyChangesCheck"
+                          Content="Show only changes"
+                          VerticalAlignment="Center"
+                          Foreground="#F1F1F1"
+                          Checked="ShowOnlyChangesCheck_Changed"
+                          Unchecked="ShowOnlyChangesCheck_Changed" />
+            </Grid>
+        </Border>
+
+        <!-- Column headers -->
+        <Grid DockPanel.Dock="Top" Margin="0,0,0,4">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="BEFORE" Margin="4,0,0,0"
+                       Foreground="{StaticResource Muted}" FontWeight="SemiBold" FontSize="11" />
+            <TextBlock Grid.Column="1" Text="AFTER" Margin="8,0,0,0"
+                       Foreground="{StaticResource Muted}" FontWeight="SemiBold" FontSize="11" />
+        </Grid>
+
+        <!-- Synchronised side-by-side trees -->
         <Grid>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
-            <Border Grid.Column="0" BorderBrush="{StaticResource Border}" BorderThickness="1" Margin="0,0,4,0">
+            <Border Grid.Column="0" BorderBrush="{StaticResource Border}" BorderThickness="1" Margin="0,0,4,0"
+                    Background="{StaticResource PanelBg}">
                 <TreeView x:Name="LeftTree" Background="Transparent" BorderThickness="0"
                           Foreground="#F1F1F1" Padding="4" />
             </Border>
-            <Border Grid.Column="1" BorderBrush="{StaticResource Border}" BorderThickness="1" Margin="4,0,0,0">
+            <Border Grid.Column="1" BorderBrush="{StaticResource Border}" BorderThickness="1" Margin="4,0,0,0"
+                    Background="{StaticResource PanelBg}">
                 <TreeView x:Name="RightTree" Background="Transparent" BorderThickness="0"
                           Foreground="#F1F1F1" Padding="4" />
             </Border>

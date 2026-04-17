@@ -1,5 +1,7 @@
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using CodeRadar.ViewModels;
 
 namespace CodeRadar.Views
 {
@@ -31,6 +33,20 @@ namespace CodeRadar.Views
                 item.Focus();
                 item.IsSelected = true;
             }
+        }
+
+        // Fires when the user expands any TreeViewItem in the watch tree. If the
+        // associated VM currently shows a lazy placeholder, ask the main view model
+        // to evaluate that node's expression one level deeper, on demand.
+        private void TreeViewItem_Expanded(object sender, RoutedEventArgs e)
+        {
+            if (!(sender is TreeViewItem item)) return;
+            if (!(item.DataContext is WatchItemViewModel vm)) return;
+            if (!(DataContext is CodeRadarViewModel main)) return;
+
+            if (!vm.NeedsLazyLoad) return;
+            main.EnsureChildrenLoaded(vm);
+            e.Handled = false;
         }
     }
 }

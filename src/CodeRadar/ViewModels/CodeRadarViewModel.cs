@@ -64,11 +64,14 @@ namespace CodeRadar.ViewModels
             {
                 _refreshCts?.Cancel();
                 _refreshCts?.Dispose();
-                var cts = new CancellationTokenSource(TimeSpan.FromSeconds(12));
+                var cts = new CancellationTokenSource(CodeRadarLimits.RefreshBatchBudget);
                 _refreshCts = cts;
                 try { await RefreshAsync(cts.Token); }
                 catch (OperationCanceledException) { }
             });
+            EnsureChildrenLoadedCommand = new RelayCommand(
+                w => EnsureChildrenLoaded(w as WatchItemViewModel),
+                w => w is WatchItemViewModel vm && vm.NeedsLazyLoad && !vm.IsLoadingChildren);
             ClearExceptionCommand = new RelayCommand(() => LastException = null, () => LastException != null);
             TogglePinCommand = new RelayCommand(TogglePin, f => f is StackFrameViewModel);
             TogglePreviewSequenceCommand = new RelayCommand(TogglePreviewSequence, w => w is WatchItemViewModel);
@@ -231,6 +234,7 @@ namespace CodeRadar.ViewModels
         public System.Windows.Input.ICommand CopyAsCSharpCommand { get; }
         public System.Windows.Input.ICommand PinAsWatchCommand { get; }
         public System.Windows.Input.ICommand ShowImageCommand { get; }
+        public System.Windows.Input.ICommand EnsureChildrenLoadedCommand { get; }
 
         public string StatusMessage
         {
@@ -274,10 +278,9 @@ namespace CodeRadar.ViewModels
         {
             _jtf.RunAsync(async () =>
             {
-                // Cancel any previous in-flight refresh so we don't pile up.
                 _refreshCts?.Cancel();
                 _refreshCts?.Dispose();
-                var cts = new CancellationTokenSource(TimeSpan.FromSeconds(12));
+                var cts = new CancellationTokenSource(CodeRadarLimits.RefreshBatchBudget);
                 _refreshCts = cts;
                 try
                 {
@@ -301,18 +304,63 @@ namespace CodeRadar.ViewModels
             if (_disposed != 0) return;
             if (_debugger.CurrentState != DebuggerState.Break) return;
 
-            var stack = await _debugger.GetCurrentStackAsync(cancellationToken).ConfigureAwait(true);
-            var threads = await _debugger.GetThreadsAsync(cancellationToken).ConfigureAwait(true);
+            IReadOnlyList<StackFrameInfo> stack;
+            IReadOnlyList<ThreadInfo> threads;
+            try
+            {
+                stack = await _debugger.GetCurrentStackAsync(cancellationToken).ConfigureAwait(true);
+            }
+            catch (OperationCanceledException) { throw; }
+            catch { stack = System.Array.Empty<StackFrameInfo>(); }
 
-            var evaluated = new List<(Guid id, VariableNode node)>(_watchesById.Count);
+            try
+            {
+                threads = await _debugger.GetThreadsAsync(cancellationToken).ConfigureAwait(true);
+            }
+            catch (OperationCanceledException) { throw; }
+            catch { threads = System.Array.Empty<ThreadInfo>(); }
+
+            // Evaluate each watch independently: one failure/timeout doesn't abort the batch.
+            // Collapsed watches only evaluate the root value (depth 0) - their children
+            // are fetched lazily on expand. Expanded and sequence-preview watches still
+            // get a one-level walk so the user sees fresh children after each break.
+            var evaluated = new List<(Guid id, VariableNode node, bool preserveLazyShape)>(_watchesById.Count);
             foreach (var kvp in _watchesById)
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                if (cancellationToken.IsCancellationRequested) break;
+
                 var vm = _watchVmsById[kvp.Key];
-                VariableNode node = vm.IsSequencePreview
-                    ? await _evaluator.EvaluateSequenceAsync(kvp.Value.Expression, maxItems: 50, cancellationToken).ConfigureAwait(true)
-                    : await _evaluator.EvaluateAsync(kvp.Value.Expression, maxChildDepth: 1, cancellationToken).ConfigureAwait(true);
-                evaluated.Add((kvp.Key, node));
+                bool preserveLazy = !vm.IsExpanded && !vm.IsSequencePreview;
+                int depth = preserveLazy ? CodeRadarLimits.RefreshDepthCollapsed : CodeRadarLimits.RefreshDepthExpanded;
+
+                VariableNode node;
+                try
+                {
+                    using (var perWatch = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
+                    {
+                        perWatch.CancelAfter(CodeRadarLimits.PerWatchBudget);
+                        node = vm.IsSequencePreview
+                            ? await _evaluator.EvaluateSequenceAsync(kvp.Value.Expression, maxItems: CodeRadarLimits.SequencePreviewSize, perWatch.Token).ConfigureAwait(true)
+                            : await _evaluator.EvaluateAsync(kvp.Value.Expression, maxChildDepth: depth, perWatch.Token).ConfigureAwait(true);
+                    }
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (OperationCanceledException)
+                {
+                    node = new VariableNode(kvp.Value.Expression, CodeRadarLimits.StatusTimedOut, string.Empty,
+                        isValid: false, isNull: false, children: System.Array.Empty<VariableNode>());
+                    preserveLazy = false;
+                }
+                catch (Exception ex)
+                {
+                    node = new VariableNode(kvp.Value.Expression, "<watch failed: " + ex.Message + ">",
+                        string.Empty, isValid: false, isNull: false, children: System.Array.Empty<VariableNode>());
+                    preserveLazy = false;
+                }
+                evaluated.Add((kvp.Key, node, preserveLazy));
             }
 
             await _jtf.SwitchToMainThreadAsync(cancellationToken);
@@ -332,16 +380,22 @@ namespace CodeRadar.ViewModels
             Threads.Clear();
             foreach (var t in threads) Threads.Add(t);
 
-            foreach (var (id, node) in evaluated)
+            foreach (var (id, node, preserveLazy) in evaluated)
             {
                 if (_watchVmsById.TryGetValue(id, out var vm))
                 {
-                    vm.UpdateFrom(node);
-                    vm.RecordHistory(BreakCount, LastBreakAt ?? DateTime.UtcNow);
+                    try
+                    {
+                        vm.UpdateFrom(node, preserveLazyShape: preserveLazy);
+                        vm.RecordHistory(BreakCount, LastBreakAt ?? DateTime.UtcNow);
+                    }
+                    catch
+                    {
+                        // Never let a single watch's UI update kill the whole refresh.
+                    }
                 }
             }
 
-            // Re-apply any active search to the new evaluation results.
             if (HasWatchSearch) ApplyWatchSearch();
         }
 
@@ -378,11 +432,12 @@ namespace CodeRadar.ViewModels
             {
                 _jtf.RunAsync(async () =>
                 {
-                    using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
+                    using (var cts = new CancellationTokenSource(CodeRadarLimits.InlineEvalBudget))
                     {
-                        var node = await _evaluator.EvaluateAsync(expr.Expression, maxChildDepth: 1, cts.Token);
+                        // Depth 0 here: the first child fetch happens on lazy expand.
+                        var node = await _evaluator.EvaluateAsync(expr.Expression, maxChildDepth: CodeRadarLimits.RefreshDepthCollapsed, cts.Token);
                         await _jtf.SwitchToMainThreadAsync();
-                        vm.UpdateFrom(node);
+                        vm.UpdateFrom(node, preserveLazyShape: true);
                         vm.RecordHistory(BreakCount, DateTime.UtcNow);
                     }
                 }).Task.Forget();
@@ -416,11 +471,11 @@ namespace CodeRadar.ViewModels
 
             _jtf.RunAsync(async () =>
             {
-                using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6)))
+                using (var cts = new CancellationTokenSource(CodeRadarLimits.TogglePreviewBudget))
                 {
                     var node = vm.IsSequencePreview
-                        ? await _evaluator.EvaluateSequenceAsync(expr.Expression, maxItems: 50, cts.Token)
-                        : await _evaluator.EvaluateAsync(expr.Expression, maxChildDepth: 1, cts.Token);
+                        ? await _evaluator.EvaluateSequenceAsync(expr.Expression, maxItems: CodeRadarLimits.SequencePreviewSize, cts.Token)
+                        : await _evaluator.EvaluateAsync(expr.Expression, maxChildDepth: CodeRadarLimits.RefreshDepthExpanded, cts.Token);
                     await _jtf.SwitchToMainThreadAsync();
                     vm.UpdateFrom(node);
                 }
@@ -442,9 +497,9 @@ namespace CodeRadar.ViewModels
                     VariableNode node;
                     try
                     {
-                        using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8)))
+                        using (var cts = new CancellationTokenSource(CodeRadarLimits.ExportBudget))
                         {
-                            node = await _evaluator.EvaluateAsync(rootExpr, maxChildDepth: 2, cts.Token);
+                            node = await _evaluator.EvaluateAsync(rootExpr, maxChildDepth: CodeRadarLimits.ExportDepth, cts.Token);
                         }
                     }
                     catch (Exception ex)
@@ -500,6 +555,48 @@ namespace CodeRadar.ViewModels
             Flash("Pinned " + vm.ExpressionPath + " as watch");
         }
 
+        // Triggered by the WPF TreeView when a node expands. Fetches one additional
+        // depth level of children for that specific node, on demand. No-op if the node
+        // already has real children loaded or a load is already in flight.
+        internal void EnsureChildrenLoaded(WatchItemViewModel vm)
+        {
+            if (vm == null) return;
+            if (!vm.NeedsLazyLoad) return;
+            if (vm.IsLoadingChildren) return;
+            if (_debugger.CurrentState != DebuggerState.Break) return;
+            if (string.IsNullOrEmpty(vm.ExpressionPath)) return;
+
+            vm.IsLoadingChildren = true;
+            var expr = vm.ExpressionPath;
+
+            _jtf.RunAsync(async () =>
+            {
+                VariableNode node = null;
+                try
+                {
+                    using (var cts = new CancellationTokenSource(CodeRadarLimits.LazyExpandBudget))
+                    {
+                        node = await _evaluator.EvaluateAsync(expr, CodeRadarLimits.LazyExpandDepth, cts.Token);
+                    }
+                }
+                catch (Exception)
+                {
+                    // Swallow - the placeholder already conveys that a load was attempted.
+                }
+
+                await _jtf.SwitchToMainThreadAsync();
+                try
+                {
+                    if (node != null)
+                        vm.UpdateFrom(node);
+                }
+                finally
+                {
+                    vm.IsLoadingChildren = false;
+                }
+            }).Task.Forget();
+        }
+
         private void ShowImage(object parameter)
         {
             if (!(parameter is WatchItemViewModel vm)) return;
@@ -512,7 +609,7 @@ namespace CodeRadar.ViewModels
                 ImageExtractResult result;
                 try
                 {
-                    using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8)))
+                    using (var cts = new CancellationTokenSource(CodeRadarLimits.ImageExtractBudget))
                     {
                         result = await _imageExtractor.TryExtractAsync(expr, cts.Token);
                     }
@@ -583,9 +680,9 @@ namespace CodeRadar.ViewModels
                     VariableNode node;
                     try
                     {
-                        using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8)))
+                        using (var cts = new CancellationTokenSource(CodeRadarLimits.SnapshotBudget))
                         {
-                            node = await _evaluator.EvaluateAsync(expr.Expression, maxChildDepth: 2, cts.Token);
+                            node = await _evaluator.EvaluateAsync(expr.Expression, maxChildDepth: CodeRadarLimits.SnapshotDepth, cts.Token);
                         }
                     }
                     catch (Exception ex)
@@ -631,13 +728,16 @@ namespace CodeRadar.ViewModels
             var id = vm.GetTag();
             if (id == Guid.Empty || !_watchesById.TryGetValue(id, out var expr)) return;
 
-            if (vm.Children.Count == 0 && _debugger.CurrentState == DebuggerState.Break)
+            // Reveal needs real children. If the VM only has a lazy placeholder or
+            // no children, evaluate once; otherwise reuse what we already materialised.
+            bool needsEval = vm.Children.Count == 0 || vm.HasLazyPlaceholder;
+            if (needsEval && _debugger.CurrentState == DebuggerState.Break)
             {
                 _jtf.RunAsync(async () =>
                 {
-                    using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
+                    using (var cts = new CancellationTokenSource(CodeRadarLimits.InlineEvalBudget))
                     {
-                        var node = await _evaluator.EvaluateAsync(expr.Expression, maxChildDepth: 1, cts.Token);
+                        var node = await _evaluator.EvaluateAsync(expr.Expression, maxChildDepth: CodeRadarLimits.RefreshDepthExpanded, cts.Token);
                         await _jtf.SwitchToMainThreadAsync();
                         vm.UpdateFrom(node);
                         DoReveal(vm, expr.Expression);
@@ -653,6 +753,7 @@ namespace CodeRadar.ViewModels
         {
             foreach (var child in vm.Children)
             {
+                if (child.IsLazyPlaceholder) continue;
                 if (string.IsNullOrWhiteSpace(child.Name) || child.Name.Equals("Raw View", StringComparison.Ordinal))
                     continue;
 
@@ -678,29 +779,61 @@ namespace CodeRadar.ViewModels
 
             _jtf.RunAsync(async () =>
             {
-                using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15)))
+                using (var cts = new CancellationTokenSource(CodeRadarLimits.LinqDecomposeBudget))
                 {
                 var results = new List<LinqStepResult>(segments.Count);
+                int SampleCap = CodeRadarLimits.SequencePreviewSize;
+                int CountCap  = CodeRadarLimits.MaxCountProbe;
+
                 foreach (var segment in segments)
                 {
                     if (cts.Token.IsCancellationRequested) break;
                     LinqStepResult step;
                     try
                     {
-                        var node = await _evaluator.EvaluateSequenceAsync(segment.CumulativeExpression, maxItems: 50, cts.Token);
-                        if (!node.IsValid)
+                        // Preview: materialise up to SampleCap items (for display only).
+                        var preview = await _evaluator.EvaluateSequenceAsync(segment.CumulativeExpression, maxItems: SampleCap, cts.Token);
+                        bool isEnumerable = preview.IsValid;
+                        int sampleSize = isEnumerable ? preview.Children.Count : 0;
+                        bool sampleTruncated = isEnumerable && sampleSize >= SampleCap;
+
+                        // Real count: query the sequence separately so we don't mislead the user
+                        // when the sample is capped. Capped at CountCap for safety.
+                        int? totalCount = null;
+                        bool countTruncated = false;
+                        if (isEnumerable)
                         {
-                            node = await _evaluator.EvaluateAsync(segment.CumulativeExpression, maxChildDepth: 1, cts.Token);
+                            try
+                            {
+                                var (c, trunc) = await _evaluator.TryCountAsync(segment.CumulativeExpression, CountCap, cts.Token);
+                                totalCount = c;
+                                countTruncated = trunc;
+                            }
+                            catch { /* non-fatal: we still have the preview */ }
                         }
-                        int? count = node.IsValid ? (int?)node.Children.Count : null;
-                        bool truncated = node.Children.Count >= 50;
-                        step = new LinqStepResult(segment.Label, segment.CumulativeExpression, count,
-                            truncated, node.Children, node.IsValid ? string.Empty : node.Value);
+
+                        // Fallback: for non-enumerables (source scalar) show the scalar itself.
+                        IReadOnlyList<VariableNode> samples = preview.Children;
+                        string error = string.Empty;
+                        if (!isEnumerable)
+                        {
+                            var scalar = await _evaluator.EvaluateAsync(segment.CumulativeExpression, maxChildDepth: 1, cts.Token);
+                            samples = scalar.Children ?? System.Array.Empty<VariableNode>();
+                            if (!scalar.IsValid) error = scalar.Value;
+                        }
+
+                        step = new LinqStepResult(segment.Label, segment.CumulativeExpression,
+                            totalCount, countTruncated, sampleSize, sampleTruncated, samples, error);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        step = new LinqStepResult(segment.Label, segment.CumulativeExpression,
+                            null, false, 0, false, System.Array.Empty<VariableNode>(), "Step evaluation timed out.");
                     }
                     catch (Exception ex)
                     {
-                        step = new LinqStepResult(segment.Label, segment.CumulativeExpression, null,
-                            false, System.Array.Empty<VariableNode>(), ex.Message);
+                        step = new LinqStepResult(segment.Label, segment.CumulativeExpression,
+                            null, false, 0, false, System.Array.Empty<VariableNode>(), ex.Message);
                     }
                     results.Add(step);
                 }
@@ -715,16 +848,11 @@ namespace CodeRadar.ViewModels
         {
             int total = 0;
             foreach (var w in Watches)
-                total += CountMatches(w, _watchSearch);
+            {
+                w.ApplySearchWithCount(_watchSearch, out int n);
+                total += n;
+            }
             WatchSearchMatchCount = total;
-        }
-
-        private static int CountMatches(WatchItemViewModel vm, string query)
-        {
-            vm.ApplySearch(query);
-            int count = vm.IsSearchMatch ? 1 : 0;
-            foreach (var c in vm.Children) count += CountMatches(c, query);
-            return count;
         }
 
         private void TogglePin(object parameter)
@@ -762,7 +890,12 @@ namespace CodeRadar.ViewModels
         {
             var children = new List<VariableNode>(vm.Children.Count);
             foreach (var child in vm.Children)
+            {
+                // Lazy placeholders are UI sentinels - never include them when we
+                // snapshot, export, or compare user-visible data.
+                if (child.IsLazyPlaceholder) continue;
                 children.Add(ToVariableNode(child));
+            }
             return new VariableNode(vm.Name ?? string.Empty, vm.Value ?? string.Empty, vm.Type ?? string.Empty,
                 vm.IsValid, vm.IsNull, children);
         }

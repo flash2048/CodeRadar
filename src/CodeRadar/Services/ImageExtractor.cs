@@ -11,6 +11,7 @@ namespace CodeRadar.Services
 {
     internal sealed class ImageExtractor : IImageExtractor
     {
+        // Limits are centralized in CodeRadarLimits.
         private readonly JoinableTaskFactory _jtf;
 
         public ImageExtractor(JoinableTaskFactory jtf)
@@ -63,10 +64,21 @@ namespace CodeRadar.Services
                         value = value.Substring(1, value.Length - 2);
 
                     if (value.Length < 10) continue;
+                    if (value.Length > CodeRadarLimits.MaxBase64Chars)
+                    {
+                        lastError = $"Base64 payload too large ({value.Length:N0} chars, max {CodeRadarLimits.MaxBase64Chars:N0}).";
+                        continue;
+                    }
 
                     byte[] bytes;
                     try { bytes = Convert.FromBase64String(value); }
                     catch { continue; }
+
+                    if (bytes.Length > CodeRadarLimits.MaxImageBytes)
+                    {
+                        lastError = $"Image payload too large ({bytes.Length:N0} bytes, max {CodeRadarLimits.MaxImageBytes:N0}).";
+                        continue;
+                    }
 
                     var format = DetectImageFormat(bytes);
                     if (format == null) continue;

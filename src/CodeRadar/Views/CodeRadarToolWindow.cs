@@ -25,20 +25,40 @@ namespace CodeRadar.Views
         {
             base.OnCreate();
 
-            var package = (CodeRadarPackage)Package;
-            var debugger = package.GetCodeRadarService<IDebuggerService>();
-            var evaluator = package.GetCodeRadarService<IExpressionEvaluatorService>();
-            var imageExtractor = package.GetCodeRadarService<IImageExtractor>();
+            CodeRadarPackage package = null;
+            try
+            {
+                package = (CodeRadarPackage)Package;
+                var debugger = package.GetCodeRadarService<IDebuggerService>();
+                var evaluator = package.GetCodeRadarService<IExpressionEvaluatorService>();
+                var imageExtractor = package.GetCodeRadarService<IImageExtractor>();
 
-            _viewModel = new CodeRadarViewModel(debugger, evaluator, imageExtractor, package.JoinableTaskFactory);
-            _viewModel.ExportRequested    += OnExportRequested;
-            _viewModel.HistoryRequested   += OnHistoryRequested;
-            _viewModel.CompareRequested   += OnCompareRequested;
-            _viewModel.DecomposeRequested += OnDecomposeRequested;
-            _viewModel.ImageRequested     += OnImageRequested;
+                _viewModel = new CodeRadarViewModel(debugger, evaluator, imageExtractor, package.JoinableTaskFactory);
+                _viewModel.ExportRequested    += OnExportRequested;
+                _viewModel.HistoryRequested   += OnHistoryRequested;
+                _viewModel.CompareRequested   += OnCompareRequested;
+                _viewModel.DecomposeRequested += OnDecomposeRequested;
+                _viewModel.ImageRequested     += OnImageRequested;
 
-            var control = new CodeRadarControl { DataContext = _viewModel };
-            Content = control;
+                var control = new CodeRadarControl { DataContext = _viewModel };
+                Content = control;
+            }
+            catch (Exception ex)
+            {
+                // Show a placeholder and record the failure so users can see why the tool
+                // window didn't render (check the ActivityLog / 'ShowActivityLog' command).
+                Content = new System.Windows.Controls.TextBlock
+                {
+                    Text = "Code Radar failed to initialise.\n\n" + ex,
+                    TextWrapping = System.Windows.TextWrapping.Wrap,
+                    Margin = new System.Windows.Thickness(12)
+                };
+                if (package != null)
+                {
+                    package.JoinableTaskFactory.RunAsync(async () =>
+                        await package.LogErrorAsync("CodeRadarToolWindow.OnCreate failed: " + ex));
+                }
+            }
         }
 
         protected override void OnClose()

@@ -13,14 +13,6 @@ namespace CodeRadar.Services
 {
     internal sealed class ExpressionEvaluatorService : IExpressionEvaluatorService
     {
-        // Cap children per node to avoid enumerating huge collections through COM.
-        private const int MaxChildrenPerNode = 200;
-
-        // Per-GetExpression timeout in milliseconds. Keep low so a single stuck
-        // expression doesn't freeze the shell for long.
-        private const int DefaultExprTimeoutMs = 600;
-        private const int SequenceExprTimeoutMs = 2500;
-
         private readonly JoinableTaskFactory _jtf;
 
         public ExpressionEvaluatorService(JoinableTaskFactory joinableTaskFactory)
@@ -30,11 +22,32 @@ namespace CodeRadar.Services
 
         public async Task<VariableNode> EvaluateAsync(string expression, int maxChildDepth, CancellationToken cancellationToken)
         {
-            // Overall timeout: 3 seconds base + 2 seconds per depth level.
-            int overallMs = 3000 + maxChildDepth * 2000;
+            // Overall budget scales with requested depth so deeper evaluations
+            // are still bounded but get a bit more headroom.
+            var overall = CodeRadarLimits.OverallEvalBudget + TimeSpan.FromSeconds(Math.Max(0, maxChildDepth - 1) * 2);
             return await WithOverallTimeout(
-                () => EvaluateCoreAsync(expression, expression, maxChildDepth, DefaultExprTimeoutMs, cancellationToken),
-                expression, overallMs, cancellationToken);
+                (ct) => EvaluateCoreAsync(expression, expression, maxChildDepth, CodeRadarLimits.DefaultExprTimeoutMs, ct),
+                expression, overall, cancellationToken);
+        }
+
+        public async Task<(int? count, bool truncated)> TryCountAsync(string expression, int maxCount, CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrWhiteSpace(expression)) return (null, false);
+            int cap = Math.Max(1, maxCount);
+
+            string wrapped = $"System.Linq.Enumerable.Count(System.Linq.Enumerable.Take({expression}, {cap + 1}))";
+
+            var node = await WithOverallTimeout(
+                (ct) => EvaluateCoreAsync(displayName: expression, expression: wrapped, maxChildDepth: 0, CodeRadarLimits.SequenceExprTimeoutMs, ct),
+                expression, CodeRadarLimits.CountProbeBudget, cancellationToken);
+
+            if (!node.IsValid) return (null, false);
+            if (int.TryParse(node.Value, out int n))
+            {
+                if (n > cap) return (cap, true);
+                return (n, false);
+            }
+            return (null, false);
         }
 
         public async Task<VariableNode> EvaluateSequenceAsync(string expression, int maxItems, CancellationToken cancellationToken)
@@ -49,25 +62,26 @@ namespace CodeRadar.Services
             var wrapped = $"System.Linq.Enumerable.ToArray(System.Linq.Enumerable.Take({expression}, {take}))";
 
             return await WithOverallTimeout(
-                () => EvaluateCoreAsync(displayName: expression, expression: wrapped, maxChildDepth: 1, SequenceExprTimeoutMs, cancellationToken),
-                expression, 6000, cancellationToken);
+                (ct) => EvaluateCoreAsync(displayName: expression, expression: wrapped, maxChildDepth: 1, CodeRadarLimits.SequenceExprTimeoutMs, ct),
+                expression, CodeRadarLimits.SequenceEvalBudget, cancellationToken);
         }
 
+        // The timeout path threads the linked token into the work delegate so that
+        // inner GetExpression / DataMembers enumeration actually observes cancellation.
         private async Task<VariableNode> WithOverallTimeout(
-            Func<Task<VariableNode>> work, string displayName, int timeoutMs, CancellationToken outer)
+            Func<CancellationToken, Task<VariableNode>> work, string displayName, TimeSpan timeout, CancellationToken outer)
         {
             using (var linked = CancellationTokenSource.CreateLinkedTokenSource(outer))
             {
-                linked.CancelAfter(timeoutMs);
+                linked.CancelAfter(timeout);
                 try
                 {
-                    return await work();
+                    return await work(linked.Token);
                 }
                 catch (OperationCanceledException) when (!outer.IsCancellationRequested)
                 {
-                    // Our internal timeout fired, not the caller's token.
                     return new VariableNode(displayName ?? string.Empty,
-                        "<evaluation timed out>", string.Empty,
+                        CodeRadarLimits.StatusTimedOut, string.Empty,
                         isValid: false, isNull: false, children: Array.Empty<VariableNode>());
                 }
             }
@@ -107,10 +121,23 @@ namespace CodeRadar.Services
                     isValid: false, isNull: false, children: Array.Empty<VariableNode>());
             }
 
-            return BuildNode(displayName, expr, remainingDepth: Math.Max(0, maxChildDepth), cancellationToken);
+            var budget = new NodeBudget(CodeRadarLimits.MaxTotalNodesPerEvaluate);
+            return BuildNode(displayName, expr, remainingDepth: Math.Max(0, maxChildDepth), cancellationToken, budget);
         }
 
-        private static VariableNode BuildNode(string name, Expression expr, int remainingDepth, CancellationToken cancellationToken)
+        // Mutable counter shared across one evaluation tree so we don't materialise
+        // arbitrary numbers of total nodes even if individual nodes stay under the
+        // per-node cap.
+        private sealed class NodeBudget
+        {
+            private int _remaining;
+            public NodeBudget(int initial) { _remaining = initial; }
+            public bool Take() { if (_remaining <= 0) return false; _remaining--; return true; }
+            public bool Exhausted => _remaining <= 0;
+        }
+
+        private static VariableNode BuildNode(string name, Expression expr, int remainingDepth,
+            CancellationToken cancellationToken, NodeBudget budget)
         {
             if (expr == null)
             {
@@ -118,13 +145,17 @@ namespace CodeRadar.Services
                     isValid: false, isNull: false, children: Array.Empty<VariableNode>());
             }
 
-            string value = SafeGet(() => expr.Value);
-            string type = SafeGet(() => expr.Type);
+            budget.Take();
+
+            string value = TruncateValue(SafeGet(() => expr.Value));
+            string type  = SafeGet(() => expr.Type);
             bool isValid = SafeGet(() => expr.IsValidValue, false);
-            bool isNull = isValid && IsNullValue(value);
+            bool isNull  = isValid && IsNullValue(value);
 
             IReadOnlyList<VariableNode> children = Array.Empty<VariableNode>();
-            if (remainingDepth > 0 && isValid && !isNull && !cancellationToken.IsCancellationRequested)
+            if (remainingDepth > 0 && isValid && !isNull
+                && !cancellationToken.IsCancellationRequested
+                && !budget.Exhausted)
             {
                 try
                 {
@@ -132,16 +163,19 @@ namespace CodeRadar.Services
                     int memberCount = members?.Count ?? 0;
                     if (memberCount > 0)
                     {
-                        int take = memberCount > MaxChildrenPerNode ? MaxChildrenPerNode : memberCount;
+                        int take = memberCount > CodeRadarLimits.MaxChildrenPerNode
+                            ? CodeRadarLimits.MaxChildrenPerNode
+                            : memberCount;
                         var list = new List<VariableNode>(Math.Min(take, 64));
                         int i = 0;
                         foreach (Expression child in members)
                         {
                             if (i >= take) break;
                             if (cancellationToken.IsCancellationRequested) break;
+                            if (budget.Exhausted) break;
                             try
                             {
-                                list.Add(BuildNode(child.Name ?? string.Empty, child, remainingDepth - 1, cancellationToken));
+                                list.Add(BuildNode(child.Name ?? string.Empty, child, remainingDepth - 1, cancellationToken, budget));
                             }
                             catch
                             {
@@ -157,6 +191,15 @@ namespace CodeRadar.Services
                                 isValid: false, isNull: false,
                                 children: Array.Empty<VariableNode>()));
                         }
+                        else if (budget.Exhausted && i < memberCount)
+                        {
+                            list.Add(new VariableNode(
+                                "... more",
+                                CodeRadarLimits.StatusBudgetReached,
+                                string.Empty,
+                                isValid: false, isNull: false,
+                                children: Array.Empty<VariableNode>()));
+                        }
                         children = list;
                     }
                 }
@@ -166,6 +209,14 @@ namespace CodeRadar.Services
             }
 
             return new VariableNode(name, value, type, isValid, isNull, children);
+        }
+
+        private static string TruncateValue(string value)
+        {
+            if (string.IsNullOrEmpty(value)) return value ?? string.Empty;
+            if (value.Length <= CodeRadarLimits.MaxValueStringLength) return value;
+            return value.Substring(0, CodeRadarLimits.MaxValueStringLength)
+                 + "... (truncated " + (value.Length - CodeRadarLimits.MaxValueStringLength) + " chars)";
         }
 
         private static bool IsNullValue(string value)

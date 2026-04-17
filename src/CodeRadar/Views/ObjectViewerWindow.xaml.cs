@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using CodeRadar.Models;
+using CodeRadar.Services;
 using Microsoft.Win32;
 
 namespace CodeRadar.Views
@@ -82,13 +83,16 @@ namespace CodeRadar.Views
         {
             if (_reEvaluator == null) return;
 
-            int depth = SelectedDepth ?? 10;
+            int depth = SelectedDepth ?? CodeRadarLimits.MaxReEvaluateDepth;
+            // Cap depth to MaxReEvaluateDepth so "Unlimited" can't accidentally
+            // ask the debugger to walk ten thousand levels.
+            if (depth > CodeRadarLimits.MaxReEvaluateDepth) depth = CodeRadarLimits.MaxReEvaluateDepth;
             ReEvalButton.IsEnabled = false;
             StatusText.Text = $"Evaluating at depth {depth}...";
 
             _reEvalCts?.Cancel();
             _reEvalCts?.Dispose();
-            var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            var cts = new CancellationTokenSource(CodeRadarLimits.ReEvaluateBudget);
             _reEvalCts = cts;
 
             try

@@ -17,11 +17,13 @@ namespace CodeRadar
     internal static class PackageIds
     {
         public const int ShowCodeRadarWindowCommandId = 0x0100;
-        public const int CodeRadarMenuGroup = 0x1020;
+        public const int CodeRadarMenuGroup           = 0x1020;
 
-        public const int CodeRadarEditorContextGroup = 0x1021;
-        public const int CodeRadarSubMenu           = 0x1030;
-        public const int CodeRadarSubMenuGroup      = 0x1040;
+        public const int CodeRadarEditorContextGroup  = 0x1021;
+        public const int CodeRadarExtensionsGroup     = 0x1022;
+        public const int CodeRadarToolsGroup          = 0x1023;
+        public const int CodeRadarSubMenu             = 0x1030;
+        public const int CodeRadarSubMenuGroup        = 0x1040;
 
         public const int EditorAddToWatchesCommandId  = 0x0200;
         public const int EditorExportObjectCommandId  = 0x0201;

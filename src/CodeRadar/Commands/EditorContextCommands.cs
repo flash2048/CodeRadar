@@ -112,9 +112,9 @@ namespace CodeRadar.Commands
                 VariableNode node;
                 try
                 {
-                    using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8)))
+                    using (var cts = new CancellationTokenSource(CodeRadarLimits.ExportBudget))
                     {
-                        node = await evaluator.EvaluateAsync(expr, maxChildDepth: 2, cts.Token);
+                        node = await evaluator.EvaluateAsync(expr, maxChildDepth: CodeRadarLimits.ExportDepth, cts.Token);
                     }
                 }
                 catch (Exception ex)
@@ -150,7 +150,9 @@ namespace CodeRadar.Commands
                 if (segments.Count == 0) return;
 
                 var results = new List<LinqStepResult>(segments.Count);
-                using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15)))
+                int SampleCap = CodeRadarLimits.SequencePreviewSize;
+                int CountCap  = CodeRadarLimits.MaxCountProbe;
+                using (var cts = new CancellationTokenSource(CodeRadarLimits.LinqDecomposeBudget))
                 {
                 foreach (var segment in segments)
                 {
@@ -158,19 +160,45 @@ namespace CodeRadar.Commands
                     LinqStepResult step;
                     try
                     {
-                        var node = await evaluator.EvaluateSequenceAsync(segment.CumulativeExpression, maxItems: 50, cts.Token);
-                        if (!node.IsValid)
-                            node = await evaluator.EvaluateAsync(segment.CumulativeExpression, maxChildDepth: 1, cts.Token);
+                        var preview = await evaluator.EvaluateSequenceAsync(segment.CumulativeExpression, maxItems: SampleCap, cts.Token);
+                        bool isEnumerable = preview.IsValid;
+                        int sampleSize = isEnumerable ? preview.Children.Count : 0;
+                        bool sampleTruncated = isEnumerable && sampleSize >= SampleCap;
 
-                        int? count = node.IsValid ? (int?)node.Children.Count : null;
-                        bool truncated = node.Children.Count >= 50;
-                        step = new LinqStepResult(segment.Label, segment.CumulativeExpression, count,
-                            truncated, node.Children, node.IsValid ? string.Empty : node.Value);
+                        int? totalCount = null;
+                        bool countTruncated = false;
+                        if (isEnumerable)
+                        {
+                            try
+                            {
+                                var (c, trunc) = await evaluator.TryCountAsync(segment.CumulativeExpression, CountCap, cts.Token);
+                                totalCount = c;
+                                countTruncated = trunc;
+                            }
+                            catch { }
+                        }
+
+                        IReadOnlyList<VariableNode> samples = preview.Children;
+                        string error = string.Empty;
+                        if (!isEnumerable)
+                        {
+                            var scalar = await evaluator.EvaluateAsync(segment.CumulativeExpression, maxChildDepth: 1, cts.Token);
+                            samples = scalar.Children ?? Array.Empty<VariableNode>();
+                            if (!scalar.IsValid) error = scalar.Value;
+                        }
+
+                        step = new LinqStepResult(segment.Label, segment.CumulativeExpression,
+                            totalCount, countTruncated, sampleSize, sampleTruncated, samples, error);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        step = new LinqStepResult(segment.Label, segment.CumulativeExpression,
+                            null, false, 0, false, Array.Empty<VariableNode>(), "Step evaluation timed out.");
                     }
                     catch (Exception ex)
                     {
-                        step = new LinqStepResult(segment.Label, segment.CumulativeExpression, null,
-                            false, Array.Empty<VariableNode>(), ex.Message);
+                        step = new LinqStepResult(segment.Label, segment.CumulativeExpression,
+                            null, false, 0, false, Array.Empty<VariableNode>(), ex.Message);
                     }
                     results.Add(step);
                 }
@@ -205,7 +233,7 @@ namespace CodeRadar.Commands
                 ImageExtractResult result;
                 try
                 {
-                    using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8)))
+                    using (var cts = new CancellationTokenSource(CodeRadarLimits.ImageExtractBudget))
                     {
                         result = await extractor.TryExtractAsync(expr, cts.Token);
                     }

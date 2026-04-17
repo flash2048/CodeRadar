@@ -86,8 +86,12 @@
                             </Border>
 
                             <!-- Sample items as expandable tree -->
+                            <TextBlock Text="{Binding SampleLabelText}"
+                                       Foreground="{StaticResource Muted}" FontStyle="Italic"
+                                       Margin="8,6,0,0"
+                                       Visibility="{Binding HasSamplesVisibility}" />
                             <TreeView x:Name="SampleTree"
-                                      ItemsSource="{Binding Result.SampleItems}" Margin="8,6,0,0"
+                                      ItemsSource="{Binding Result.SampleItems}" Margin="8,2,0,0"
                                       Visibility="{Binding HasSamplesVisibility}"
                                       Background="Transparent" BorderThickness="0"
                                       ItemTemplate="{StaticResource VariableNodeTemplate}">
@@ -111,7 +115,7 @@
                                     </ContextMenu>
                                 </TreeView.ContextMenu>
                             </TreeView>
-                            <TextBlock Text="... more elements not shown (truncated at 50)"
+                            <TextBlock Text="... additional elements not shown in preview (sample capped at 50 items)"
                                        Foreground="{StaticResource Muted}" Margin="16,4,0,0"
                                        FontStyle="Italic"
                                        Visibility="{Binding TruncatedVisibility}" />
